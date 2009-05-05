@@ -13,6 +13,6 @@ cabal-version:   >= 1.2
 build-type:      Simple
 
 library
-    build-depends:   base, Crypto, dataenc, bytestring, random
+    build-depends:   base, Crypto, dataenc, bytestring, random, utf8-string
     exposed-modules: Web.ClientSession
     ghc-options:     -Wall -O2

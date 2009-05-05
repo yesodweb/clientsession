@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 ---------------------------------------------------------
 -- |
 -- Module        : Web.ClientSession
@@ -13,14 +14,19 @@
 --
 ---------------------------------------------------------
 module Web.ClientSession
-    ( getKey
+    ( -- * Automatic key generation
+      getKey
+    , getDefaultKey
+      -- * Actual encryption/decryption
     , encrypt
     , decrypt
-    , getDefaultKey
+      -- * Classes
+    , IsByteString (..)
     ) where
 
 import Codec.Encryption.AES (AESKey)
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.UTF8 as BSU
 
 import Data.LargeWord (Word256)
 import Codec.Utils (listFromOctets, listToOctets)
@@ -31,6 +37,19 @@ import qualified Codec.Encryption.AES as AES
 import qualified Codec.Binary.Base64Url as Base64
 import qualified Data.Digest.MD5 as MD5
 
+-- | A class for anything which can become a 'Data.ByteString'.
+-- The 'String' instance uses UTF8 encoding.
+class IsByteString a where
+    toByteString :: a -> BS.ByteString
+    fromByteString :: BS.ByteString -> a
+instance IsByteString BS.ByteString where
+    toByteString = id
+    fromByteString = id
+instance IsByteString String where
+    toByteString = BSU.fromString
+    fromByteString = BSU.toString
+
+-- | Simply calls 'getKey' \"client_session_key.aes\"
 getDefaultKey :: IO Word256
 getDefaultKey = getKey "client_session_key.aes"
 
@@ -63,12 +82,12 @@ instance Random Word8 where
 -- | Encrypt with the given key and base-64 encode.
 -- A hash is stored inside the encrypted key so that, upon decryption,
 -- integrity can be guaranteed.
-encrypt :: AES.AESKey k
+encrypt :: (IsByteString b, AES.AESKey k)
         => k               -- ^ The key used for encryption.
-        -> BS.ByteString   -- ^ The data to encrypt.
+        -> b               -- ^ The data to encrypt.
         -> String          -- ^ Encrypted and encoded data.
 encrypt k x =
-        let unpacked = BS.unpack x
+        let unpacked = BS.unpack $ toByteString x
         in Base64.encode . listToOctets . map (AES.encrypt k) .
            listFromOctets $ MD5.hash unpacked ++ unpacked
 
@@ -80,16 +99,16 @@ liftMaybe (Just x) = return x
 -- | Base-64 decode and decrypt with the given key, if possible.
 -- If either the original string is not a valid base-64 encoded string,
 -- or the hash at the beginning of the decrypted string does not match,
--- this function returns 'Nothing'.
-decrypt :: (AES.AESKey k, Monad m)
+-- this function 'fail's.
+decrypt :: (AES.AESKey k, Monad m, IsByteString b)
         => k                    -- ^ The key used for encryption.
         -> String               -- ^ Data to decrypt.
-        -> m BS.ByteString      -- ^ The decrypted data, if possible.
+        -> m b                  -- ^ The decrypted data, if possible.
 decrypt k x = do
         decoded <- liftMaybe $ Base64.decode x
         let decrypted = listToOctets $ map (AES.decrypt k)
                         $ listFromOctets decoded
         let (hash, rest) = splitAt 16 decrypted
         if hash == MD5.hash rest
-                then return $ BS.pack rest
+                then return $ fromByteString $ BS.pack rest
                 else fail "Invalid"
