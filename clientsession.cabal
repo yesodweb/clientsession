@@ -15,4 +15,4 @@ build-type:      Simple
 library
     build-depends:   base, Crypto, dataenc, bytestring, random, utf8-string
     exposed-modules: Web.ClientSession
-    ghc-options:     -Wall -O2
+    ghc-options:     -Wall
