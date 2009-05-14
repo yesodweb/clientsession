@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 ---------------------------------------------------------
--- |
+--
 -- Module        : Web.ClientSession
 -- Copyright     : Michael Snoyman
 -- License       : BSD3
@@ -16,12 +16,16 @@
 module Web.ClientSession
     ( -- * Automatic key generation
       getKey
+    , defaultKeyFile
     , getDefaultKey
       -- * Actual encryption/decryption
     , encrypt
     , decrypt
       -- * Classes
     , IsByteString (..)
+      -- * Key types and classes.
+    , Word256
+    , AESKey
     ) where
 
 import Codec.Encryption.AES (AESKey)
@@ -49,9 +53,13 @@ instance IsByteString String where
     toByteString = BSU.fromString
     fromByteString = BSU.toString
 
+-- | The default key file.
+defaultKeyFile :: String
+defaultKeyFile = "client_session_key.aes"
+
 -- | Simply calls 'getKey' \"client_session_key.aes\"
 getDefaultKey :: IO Word256
-getDefaultKey = getKey "client_session_key.aes"
+getDefaultKey = getKey defaultKeyFile
 
 -- | Get a 256-bit key from the given text file.
 -- If the file does not exist, or did not contain enough bits,
