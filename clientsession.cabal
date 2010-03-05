@@ -1,5 +1,5 @@
 name:            clientsession
-version:         0.2.0
+version:         0.2.0.1
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michael@snoyman.com>
@@ -17,7 +17,7 @@ library
     build-depends:   base >=4 && <5,
                      Crypto >= 4.2.0 && < 4.3,
                      dataenc >= 0.13.0.2 && < 0.14,
-                     random >= 1.0.0.2 && < 1.1,
+                     random >= 1.0.0.1 && < 1.1,
                      failure >= 0.0.0.2 && < 0.1,
                      bytestring >= 0.9 && < 0.10
     exposed-modules: Web.ClientSession
