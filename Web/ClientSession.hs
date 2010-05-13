@@ -105,7 +105,7 @@ encrypt k x =
 -- | Base-64 decode and decrypt with the given key, if possible.  Calls
 -- 'failure' if either the original string is not a valid base-64 encoded
 -- string, or the hash at the beginning of the decrypted string does not match.
-decrypt :: (AES.AESKey k, MonadFailure ClientSessionException m)
+decrypt :: (AES.AESKey k, Monad m, Failure ClientSessionException m)
         => k                    -- ^ The key used for encryption.
         -> String               -- ^ Data to decrypt.
         -> m BS.ByteString      -- ^ The decrypted data, if possible.
