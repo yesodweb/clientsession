@@ -15,7 +15,7 @@ homepage:        http://github.com/snoyberg/clientsession/tree/master
 
 library
     build-depends:   base >=4 && <5,
-                     SimpleAES >= 0.4 && < 0.5,
+                     SimpleAES >= 0.4.1 && < 0.5,
                      pureMD5 >= 1.1.0.0 && < 1.2,
                      dataenc >= 0.13.0.2 && < 0.14,
                      failure >= 0.0.0.2 && < 0.2,

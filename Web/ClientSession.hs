@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 ---------------------------------------------------------
 --
 -- Module        : Web.ClientSession
@@ -37,7 +36,6 @@ import qualified Data.Digest.Pure.MD5 as MD5
 
 import Data.Typeable (Typeable)
 import Control.Exception
-import System.IO.Unsafe
 
 import System.Directory
 
@@ -57,11 +55,11 @@ getDefaultKey = getKey defaultKeyFile
 data ClientSessionException =
       KeyTooSmall S.ByteString
     | InvalidBase64 String
-    | InvalidHash
+    | InvalidHash String
     | MismatchedHash { expectedHash :: L.ByteString
                      , actualHash   :: L.ByteString
                      }
-    deriving (Show, Typeable)
+    deriving (Show, Typeable, Eq)
 instance Exception ClientSessionException
 
 -- | Get a key from the given text file.
@@ -104,26 +102,11 @@ decrypt k x = do
     decoded <- case Base64.decode x of
                     Nothing -> failure $ InvalidBase64 x
                     Just y -> return y
-    decrypted <- case decryptMsg' k $ L.pack decoded of
-                    Nothing -> failure InvalidHash
-                    Just z -> return z
+    decrypted <- case AES.decryptMsg' mode k $ L.pack decoded of
+                    Left s -> failure $ InvalidHash s
+                    Right z -> return z
     let (expected, rest) = L.splitAt 16 decrypted
     let actual = encode $ MD5.md5 rest
     unless (expected == actual) $ failure
                                 $ MismatchedHash expected actual
     return rest
-
-decryptMsg' :: Key -> L.ByteString -> Maybe L.ByteString
-decryptMsg' k = teaspoon . AES.decryptMsg mode k
-
--- take from spoon library
-teaspoon :: a -> Maybe a
-teaspoon a = unsafePerformIO $ (Just `fmap` evaluate a) `catches` handlers
-
-handlers :: [Handler (Maybe a)]
-handlers = [ Handler $ \(_ :: ArithException)   -> return Nothing
-           , Handler $ \(_ :: ArrayException)   -> return Nothing
-           , Handler $ \(_ :: ErrorCall)        -> return Nothing
-           , Handler $ \(_ :: PatternMatchFail) -> return Nothing
-           , Handler $ \(x :: SomeException)    -> throwIO x
-           ]
