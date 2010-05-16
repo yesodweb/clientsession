@@ -5,6 +5,7 @@ import Test.QuickCheck
 import Test.Framework.Providers.QuickCheck2
 
 import qualified Data.ByteString.Lazy as L
+import qualified Data.ByteString as S
 
 import Web.ClientSession
 import System.IO.Unsafe
@@ -17,23 +18,24 @@ main = defaultMain
     , testProperty "encrypt/decrypt failure" caseEncDecFailure
     ]
 
-caseEncDec :: L.ByteString -> Bool
+caseEncDec :: S.ByteString -> Bool
 caseEncDec bs = unsafePerformIO $ do
     key <- getDefaultKey
-    s <- encrypt key bs
-    let bs' = decrypt key s :: Either ClientSessionException L.ByteString
-    print bs'
+    let s = encrypt key bs
+    let bs' = decrypt key s :: Either ClientSessionException S.ByteString
     return $ Right bs == bs'
 
-caseEncDecFailure :: L.ByteString -> Bool
+caseEncDecFailure :: S.ByteString -> Bool
 caseEncDecFailure bs = unsafePerformIO $ do
     key <- getDefaultKey
-    s <- encrypt key bs
-    let bs' = decrypt key $ 'x' : s
+    let s = encrypt key bs
+    let bs' = decrypt key $ (head s `addChar` 1) : drop 1 s
     return $ Just bs /= bs'
 
-instance Arbitrary L.ByteString where
-    arbitrary = L.pack `fmap` arbitrary
+addChar c i = toEnum $ fromEnum c + i
+
+instance Arbitrary S.ByteString where
+    arbitrary = S.pack `fmap` arbitrary
 
 instance Arbitrary Word8 where
     arbitrary = arbitraryBoundedIntegral

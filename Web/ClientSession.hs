@@ -26,11 +26,10 @@ module Web.ClientSession
     , ClientSessionException (..)
     ) where
 
-import Codec.Crypto.SimpleAES
 import Control.Failure
-import Control.Monad (unless)
+import Control.Monad
 
-import qualified Codec.Crypto.SimpleAES as AES
+import qualified Codec.Encryption.AESAux as AES
 import qualified Codec.Binary.Base64Url as Base64
 import qualified Data.Digest.Pure.MD5 as MD5
 
@@ -42,23 +41,39 @@ import System.Directory
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 
-import Data.Binary
+import Data.Serialize
+import Control.Applicative
+
+data Key = Key !Word64 !Word64 !Word64 !Word64
+
+instance Serialize Key where
+    put (Key a b c d) = put a >> put b >> put c >> put d
+    get = do
+        a <- get
+        b <- get
+        c <- get
+        d <- get
+        return $ Key a b c d
+
+keyToOctets :: Key -> [Word8]
+keyToOctets = S.unpack . encode
 
 -- | The default key file.
 defaultKeyFile :: String
 defaultKeyFile = "client_session_key.aes"
 
 -- | Simply calls 'getKey' \"client_session_key.aes\"
-getDefaultKey :: IO AES.Key
+getDefaultKey :: IO Key
 getDefaultKey = getKey defaultKeyFile
 
 data ClientSessionException =
       KeyTooSmall S.ByteString
     | InvalidBase64 String
-    | InvalidHash String
-    | MismatchedHash { expectedHash :: L.ByteString
-                     , actualHash   :: L.ByteString
+    | MismatchedHash { expectedHash :: S.ByteString
+                     , actualHash   :: S.ByteString
                      }
+    | NotMultOf16
+    | NotValidEncodedByteString
     deriving (Show, Typeable, Eq)
 instance Exception ClientSessionException
 
@@ -67,46 +82,65 @@ instance Exception ClientSessionException
 -- If the file does not exist a random key will be generated and stored in that
 -- file.
 getKey :: FilePath     -- ^ File name where key is stored.
-       -> IO AES.Key   -- ^ The actual key.
+       -> IO Key       -- ^ The actual key.
 getKey keyFile = do
     exists <- doesFileExist keyFile
-    if exists
-        then S.readFile keyFile
-        else do
-            key <- AES.randomKey
-            S.writeFile keyFile key
+    mkey <-
+        if exists
+            then either (const Nothing) Just . decode <$> S.readFile keyFile
+            else return Nothing
+    case mkey of
+        Just key -> return key
+        Nothing -> do
+            key <- randomKey
+            S.writeFile keyFile $ encode key
             return key
+
+randomKey :: IO Key
+randomKey = error "FIXME"
 
 -- | Encrypt with the given key and base-64 encode.
 -- A hash is stored inside the encrypted key so that, upon decryption,
 -- integrity can be guaranteed.
-encrypt :: AES.Key         -- ^ The key used for encryption.
-        -> L.ByteString    -- ^ The data to encrypt.
-        -> IO (String)     -- ^ Encrypted and encoded data.
-encrypt k bs = do
-    let withHash = encode (MD5.md5 bs) `L.append` bs
-    encrypted <- AES.encryptMsg mode k withHash
-    return $ Base64.encode $ L.unpack encrypted
+encrypt :: Key             -- ^ The key used for encryption.
+        -> S.ByteString    -- ^ The data to encrypt.
+        -> String     -- ^ Encrypted and encoded data.
+encrypt k bs =
+    let bs' = encode bs
+        padded = bs' `S.append` S.pack (flip replicate 0 $
+                    (16 - (S.length bs' `mod` 16)))
+        withHash = encode (MD5.md5 $ L.fromChunks [padded]) `S.append` padded
+        encrypted = aes256Encrypt' (keyToOctets k) $ S.unpack withHash
+     in Base64.encode encrypted
 
-mode :: AES.Mode
-mode = ECB
+aes256Encrypt' _ [] = []
+aes256Encrypt' key octets =
+    let (x, y) = splitAt 16 octets
+     in AES.aes256Encrypt key x ++ aes256Encrypt' key y
+
+aes256Decrypt' _ [] = []
+aes256Decrypt' key octets =
+    let (x, y) = splitAt 16 octets
+     in AES.aes256Decrypt key x ++ aes256Decrypt' key y
 
 -- | Base-64 decode and decrypt with the given key, if possible.  Calls
 -- 'failure' if either the original string is not a valid base-64 encoded
 -- string, or the hash at the beginning of the decrypted string does not match.
 decrypt :: (Monad m, Failure ClientSessionException m)
-        => AES.Key              -- ^ The key used for encryption.
+        => Key                  -- ^ The key used for encryption.
         -> String               -- ^ Data to decrypt.
-        -> m L.ByteString       -- ^ The decrypted data, if possible.
+        -> m S.ByteString       -- ^ The decrypted data, if possible.
 decrypt k x = do
     decoded <- case Base64.decode x of
                     Nothing -> failure $ InvalidBase64 x
                     Just y -> return y
-    decrypted <- case AES.decryptMsg' mode k $ L.pack decoded of
-                    Left s -> failure $ InvalidHash s
-                    Right z -> return z
-    let (expected, rest) = L.splitAt 16 decrypted
-    let actual = encode $ MD5.md5 rest
-    unless (expected == actual) $ failure
-                                $ MismatchedHash expected actual
-    return rest
+    when (length decoded `mod` 16 /= 0) $ failure NotMultOf16
+    let decrypted = aes256Decrypt' (keyToOctets k) decoded
+    let (expected, rest) = splitAt 16 decrypted
+        expected' = S.pack expected
+    let actual = encode $ MD5.md5 $ L.pack rest
+    unless (expected' == actual) $ failure
+                                 $ MismatchedHash expected' actual
+    case decode $ S.pack rest of
+        Left _ -> failure NotValidEncodedByteString
+        Right x -> return x
