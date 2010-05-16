@@ -30,7 +30,7 @@ module Web.ClientSession
 import Control.Failure
 import Control.Monad
 
-import qualified Codec.Encryption.AESAux as AES
+import Codec.Encryption.Xor
 import qualified Codec.Binary.Base64Url as Base64
 import qualified Data.Digest.Pure.MD5 as MD5
 
@@ -47,35 +47,21 @@ import Data.Serialize.Put
 import Control.Applicative
 import System.Random
 
-data Key = Key !Word64 !Word64 !Word64 !Word64
-
-instance Serialize Key where
-    put (Key a b c d) = put a >> put b >> put c >> put d
-    get = do
-        a <- get
-        b <- get
-        c <- get
-        d <- get
-        return $ Key a b c d
-
-keyToOctets :: Key -> [Word8]
-keyToOctets = S.unpack . encode
+type Key = S.ByteString
 
 -- | The default key file.
 defaultKeyFile :: String
-defaultKeyFile = "client_session_key.aes"
+defaultKeyFile = "client_session_key.xor"
 
--- | Simply calls 'getKey' \"client_session_key.aes\"
+-- | Simply calls 'getKey' 'defaultKeyFile'.
 getDefaultKey :: IO Key
 getDefaultKey = getKey defaultKeyFile
 
 data ClientSessionException =
-      KeyTooSmall S.ByteString
-    | InvalidBase64 String
+      InvalidBase64 String
     | MismatchedHash { expectedHash :: S.ByteString
                      , actualHash   :: S.ByteString
                      }
-    | NotMultOf16
     | NotValidEncodedByteString
     deriving (Show, Typeable, Eq)
 instance Exception ClientSessionException
@@ -106,14 +92,12 @@ randomKey = do
     let (b, g3) = next g2
     let (c, g4) = next g3
     let (d, _)  = next g4
-    case decode $ runPut $ put a >> put b >> put c >> put d of
-        Left e -> error $ "randomKey: " ++ e
-        Right v -> return v
+    return $ runPut $ put a >> put b >> put c >> put d
 
 -- | Encrypt with the given key and base-64 encode.
 -- A hash is stored inside the encrypted key so that, upon decryption,
 -- integrity can be guaranteed.
-encrypt :: Key             -- ^ The key used for encryption.
+encrypt :: S.ByteString    -- ^ The key used for encryption.
         -> S.ByteString    -- ^ The data to encrypt.
         -> String     -- ^ Encrypted and encoded data.
 encrypt k bs =
@@ -121,37 +105,25 @@ encrypt k bs =
         padded = bs' `S.append` S.pack (flip replicate 0 $
                     (16 - (S.length bs' `mod` 16)))
         withHash = encode (MD5.md5 $ L.fromChunks [padded]) `S.append` padded
-        encrypted = aes256Encrypt' (keyToOctets k) $ S.unpack withHash
-     in Base64.encode encrypted
-
-aes256Encrypt' _ [] = []
-aes256Encrypt' key octets =
-    let (x, y) = splitAt 16 octets
-     in AES.aes256Encrypt key x ++ aes256Encrypt' key y
-
-aes256Decrypt' _ [] = []
-aes256Decrypt' key octets =
-    let (x, y) = splitAt 16 octets
-     in AES.aes256Decrypt key x ++ aes256Decrypt' key y
+        encrypted = xor k withHash
+     in Base64.encode $ S.unpack encrypted
 
 -- | Base-64 decode and decrypt with the given key, if possible.  Calls
 -- 'failure' if either the original string is not a valid base-64 encoded
 -- string, or the hash at the beginning of the decrypted string does not match.
 decrypt :: (Monad m, Failure ClientSessionException m)
-        => Key                  -- ^ The key used for encryption.
+        => S.ByteString         -- ^ The key used for encryption.
         -> String               -- ^ Data to decrypt.
         -> m S.ByteString       -- ^ The decrypted data, if possible.
 decrypt k x = do
     decoded <- case Base64.decode x of
                     Nothing -> failure $ InvalidBase64 x
                     Just y -> return y
-    when (length decoded `mod` 16 /= 0) $ failure NotMultOf16
-    let decrypted = aes256Decrypt' (keyToOctets k) decoded
-    let (expected, rest) = splitAt 16 decrypted
-        expected' = S.pack expected
-    let actual = encode $ MD5.md5 $ L.pack rest
-    unless (expected' == actual) $ failure
-                                 $ MismatchedHash expected' actual
-    case decode $ S.pack rest of
+    let decrypted = xor k $ S.pack decoded
+    let (expected, rest) = S.splitAt 16 decrypted
+    let actual = encode $ MD5.md5 $ L.fromChunks [rest]
+    unless (expected == actual) $ failure
+                                $ MismatchedHash expected actual
+    case decode rest of
         Left _ -> failure NotValidEncodedByteString
-        Right x -> return x
+        Right y -> return y

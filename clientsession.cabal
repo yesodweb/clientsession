@@ -9,9 +9,13 @@ description:     Achieves security through AES encryption and MD5 hashing.
                  Uses base64 encoding to avoid any issues with characters.
 category:        Web
 stability:       stable
-cabal-version:   >= 1.2
+cabal-version:   >= 1.6
 build-type:      Simple
 homepage:        http://github.com/snoyberg/clientsession/tree/master
+
+flag buildtests
+  description: Build the executable to run unit tests
+  default: False
 
 library
     build-depends:   base >=4 && <5,
@@ -23,5 +27,23 @@ library
                      cereal >= 0.2 && < 0.3,
                      random >= 1.0.0.2 && < 1.1
     exposed-modules: Web.ClientSession
-    other-modules:   Codec.Encryption.AESAux
+    other-modules:   Codec.Encryption.Xor
     ghc-options:     -Wall
+    c-sources:       c/xor.c
+
+executable             runtests
+    if flag(buildtests)
+        Buildable: True
+        cpp-options:   -DTEST
+        build-depends: test-framework,
+                       test-framework-quickcheck2,
+                       QuickCheck >= 2 && < 3
+    else
+        Buildable: False
+    ghc-options:     -Wall
+    main-is:         runtests.hs
+    c-sources:       c/xor.c
+
+source-repository head
+  type:     git
+  location: git://github.com/snoyberg/clientsession.git
