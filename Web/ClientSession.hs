@@ -16,7 +16,8 @@
 ---------------------------------------------------------
 module Web.ClientSession
     ( -- * Automatic key generation
-      getKey
+      Key
+    , getKey
     , defaultKeyFile
     , getDefaultKey
       -- * Actual encryption/decryption
@@ -42,7 +43,9 @@ import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 
 import Data.Serialize
+import Data.Serialize.Put
 import Control.Applicative
+import System.Random
 
 data Key = Key !Word64 !Word64 !Word64 !Word64
 
@@ -97,7 +100,15 @@ getKey keyFile = do
             return key
 
 randomKey :: IO Key
-randomKey = error "FIXME"
+randomKey = do
+    g1 <- newStdGen
+    let (a, g2) = next g1
+    let (b, g3) = next g2
+    let (c, g4) = next g3
+    let (d, _)  = next g4
+    case decode $ runPut $ put a >> put b >> put c >> put d of
+        Left e -> error $ "randomKey: " ++ e
+        Right v -> return v
 
 -- | Encrypt with the given key and base-64 encode.
 -- A hash is stored inside the encrypted key so that, upon decryption,
