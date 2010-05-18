@@ -43,8 +43,6 @@ import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 
 import Data.Serialize
-import Data.Serialize.Put
-import Control.Applicative
 import System.Random
 
 type Key = S.ByteString
@@ -74,25 +72,31 @@ getKey :: FilePath     -- ^ File name where key is stored.
        -> IO Key       -- ^ The actual key.
 getKey keyFile = do
     exists <- doesFileExist keyFile
-    mkey <-
-        if exists
-            then either (const Nothing) Just . decode <$> S.readFile keyFile
-            else return Nothing
-    case mkey of
-        Just key -> return key
-        Nothing -> do
-            key <- randomKey
-            S.writeFile keyFile $ encode key
-            return key
+    if exists
+        then do
+            key <- S.readFile keyFile
+            if S.length key < 1024
+                then newKey
+                else return key
+        else newKey
+  where
+    newKey = do
+        key' <- randomKey
+        S.writeFile keyFile key'
+        return key'
+
+minKeyLength :: Int
+minKeyLength = 1024
 
 randomKey :: IO Key
 randomKey = do
-    g1 <- newStdGen
-    let (a, g2) = next g1
-    let (b, g3) = next g2
-    let (c, g4) = next g3
-    let (d, _)  = next g4
-    return $ runPut $ put a >> put b >> put c >> put d
+    g <- newStdGen
+    let (nums, _) =
+            foldr
+                (\_ (n, g') -> let (n', g'') = next g' in (n' : n, g''))
+                ([], g)
+                [1..minKeyLength]
+    return $ S.pack $ map fromIntegral nums
 
 -- | Encrypt with the given key and base-64 encode.
 -- A hash is stored inside the encrypted key so that, upon decryption,
