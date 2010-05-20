@@ -18,6 +18,7 @@ main = defaultMain
     [ testProperty "encrypt/decrypt success" propEncDec
     , testProperty "encrypt/decrypt failure" propEncDecFailure
     , testProperty "AES encrypt/decrypt success" propAES
+    , testProperty "AES encryption changes bs" propAESChanges
     ]
 
 propEncDec :: S.ByteString -> Bool
@@ -36,6 +37,9 @@ propEncDecFailure bs = unsafePerformIO $ do
 
 propAES :: S.ByteString -> S.ByteString -> Bool
 propAES key bs = AES.decrypt key (AES.encrypt key bs) == Just bs
+
+propAESChanges :: S.ByteString -> S.ByteString -> Bool
+propAESChanges key bs = AES.encrypt key bs /= bs
 
 addChar :: Char -> Int -> Char
 addChar c i = toEnum $ fromEnum c + i

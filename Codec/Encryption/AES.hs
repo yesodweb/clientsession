@@ -43,7 +43,7 @@ encrypt keyBS dataBS = unsafePerformIO $
 decrypt :: ByteString -- ^ key
         -> ByteString -- ^ data
         -> Maybe ByteString
-decrypt keyBS dataBS = unsafePerformIO $
+decrypt keyBS dataBS = fromMult16 $ unsafePerformIO $
     unsafeUseAsCString keyBS $ \keyPtr ->
         unsafeUseAsCStringLen dataBS $ \(dataPtr, dataLen) -> do
             let keyPtr' = castPtr keyPtr
@@ -51,8 +51,7 @@ decrypt keyBS dataBS = unsafePerformIO $
                 dataLen' = fromIntegral dataLen
             newPtr <- c_decrypt dataLen' dataPtr' keyPtr'
             let newPtr' = castPtr newPtr
-            bs <- unsafePackCStringFinalizer newPtr' dataLen $ free newPtr'
-            return $ fromMult16 bs
+            unsafePackCStringFinalizer newPtr' dataLen $ free newPtr'
 
 foreign import ccall unsafe "encrypt"
     c_encrypt :: CUInt -> Ptr CUChar -> Ptr CUChar -> IO (Ptr CUChar)
