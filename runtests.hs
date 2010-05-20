@@ -7,7 +7,7 @@ import Test.Framework.Providers.QuickCheck2
 
 import qualified Data.ByteString as S
 
-import Codec.Encryption.Xor
+import qualified Codec.Encryption.AES as AES
 import Web.ClientSession
 import System.IO.Unsafe
 import Data.Word
@@ -17,7 +17,7 @@ main :: IO ()
 main = defaultMain
     [ testProperty "encrypt/decrypt success" propEncDec
     , testProperty "encrypt/decrypt failure" propEncDecFailure
-    , testProperty "xor/xor success" propXor
+    , testProperty "AES encrypt/decrypt success" propAES
     ]
 
 propEncDec :: S.ByteString -> Bool
@@ -34,8 +34,8 @@ propEncDecFailure bs = unsafePerformIO $ do
     let bs' = decrypt key $ (head s `addChar` 1) : drop 1 s
     return $ Just bs /= bs'
 
-propXor :: S.ByteString -> S.ByteString -> Bool
-propXor key bs = xor key (xor key bs) == bs
+propAES :: S.ByteString -> S.ByteString -> Bool
+propAES key bs = AES.decrypt key (AES.encrypt key bs) == Just bs
 
 addChar :: Char -> Int -> Char
 addChar c i = toEnum $ fromEnum c + i

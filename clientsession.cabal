@@ -27,9 +27,9 @@ library
                      cereal >= 0.2 && < 0.3,
                      random >= 1.0.0.2 && < 1.1
     exposed-modules: Web.ClientSession
-    other-modules:   Codec.Encryption.Xor
+    other-modules:   Codec.Encryption.AES
     ghc-options:     -Wall
-    c-sources:       c/xor.c
+    c-sources:       c/aestable.c c/helper.c
 
 executable             runtests
     if flag(buildtests)
@@ -42,7 +42,7 @@ executable             runtests
         Buildable: False
     ghc-options:     -Wall
     main-is:         runtests.hs
-    c-sources:       c/xor.c
+    c-sources:       c/aestable.c c/helper.c
 
 source-repository head
   type:     git

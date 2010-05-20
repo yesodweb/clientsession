@@ -30,7 +30,7 @@ module Web.ClientSession
 import Control.Failure
 import Control.Monad
 
-import Codec.Encryption.Xor
+import qualified Codec.Encryption.AES as AES
 import qualified Codec.Binary.Base64Url as Base64
 import qualified Data.Digest.Pure.MD5 as MD5
 
@@ -49,7 +49,7 @@ type Key = S.ByteString
 
 -- | The default key file.
 defaultKeyFile :: String
-defaultKeyFile = "client_session_key.xor"
+defaultKeyFile = "client_session_key.aes"
 
 -- | Simply calls 'getKey' 'defaultKeyFile'.
 getDefaultKey :: IO Key
@@ -75,7 +75,7 @@ getKey keyFile = do
     if exists
         then do
             key <- S.readFile keyFile
-            if S.length key < 1024
+            if S.length key < minKeyLength
                 then newKey
                 else return key
         else newKey
@@ -86,7 +86,7 @@ getKey keyFile = do
         return key'
 
 minKeyLength :: Int
-minKeyLength = 1024
+minKeyLength = 16
 
 randomKey :: IO Key
 randomKey = do
@@ -109,7 +109,7 @@ encrypt k bs =
         padded = bs' `S.append` S.pack (flip replicate 0 $
                     (16 - (S.length bs' `mod` 16)))
         withHash = encode (MD5.md5 $ L.fromChunks [padded]) `S.append` padded
-        encrypted = xor k withHash
+        encrypted = AES.encrypt k withHash
      in Base64.encode $ S.unpack encrypted
 
 -- | Base-64 decode and decrypt with the given key, if possible.  Calls
@@ -123,7 +123,10 @@ decrypt k x = do
     decoded <- case Base64.decode x of
                     Nothing -> failure $ InvalidBase64 x
                     Just y -> return y
-    let decrypted = xor k $ S.pack decoded
+    decrypted <-
+        case AES.decrypt k $ S.pack decoded of
+            Nothing -> failure NotValidEncodedByteString
+            Just y -> return y
     let (expected, rest) = S.splitAt 16 decrypted
     let actual = encode $ MD5.md5 $ L.fromChunks [rest]
     unless (expected == actual) $ failure
