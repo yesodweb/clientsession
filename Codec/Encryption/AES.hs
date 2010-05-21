@@ -13,48 +13,50 @@ import Data.Serialize
 import Foreign.C
 import Foreign.Ptr
 import Foreign.Marshal.Alloc
+import Foreign.Storable
 import System.IO.Unsafe
-
-toMult16 :: ByteString -> ByteString
-toMult16 bs =
-    let bs' = encode bs
-        ws  = replicate (16 - S.length bs' `mod` 16) 0
-     in bs' `S.append` pack ws
-
-fromMult16 :: ByteString -> Maybe ByteString
-fromMult16 bs =
-    case decode bs of
-        Left _ -> Nothing
-        Right x -> Just x
 
 encrypt :: ByteString -- ^ key
         -> ByteString -- ^ data
         -> ByteString
 encrypt keyBS dataBS = unsafePerformIO $
     unsafeUseAsCString keyBS $ \keyPtr ->
-        unsafeUseAsCStringLen (toMult16 dataBS) $ \(dataPtr, dataLen) -> do
+        unsafeUseAsCStringLen dataBS $ \(dataPtr, dataLen) -> do
             let keyPtr' = castPtr keyPtr
                 dataPtr' = castPtr dataPtr
                 dataLen' = fromIntegral dataLen
-            newPtr <- c_encrypt dataLen' dataPtr' keyPtr'
-            let newPtr' = castPtr newPtr
-            unsafePackCStringFinalizer newPtr' dataLen $ free newPtr'
+            allocaBytes 4 $ \lenp -> do
+                newPtr <- c_encrypt dataLen' dataPtr' keyPtr' lenp
+                let newPtr' = castPtr newPtr
+                len <- peek lenp
+                let len' = fromIntegral len
+                unsafePackCStringFinalizer newPtr' len' $ free newPtr'
 
 decrypt :: ByteString -- ^ key
         -> ByteString -- ^ data
         -> Maybe ByteString
-decrypt keyBS dataBS = fromMult16 $ unsafePerformIO $
+decrypt keyBS dataBS = unsafePerformIO $
     unsafeUseAsCString keyBS $ \keyPtr ->
         unsafeUseAsCStringLen dataBS $ \(dataPtr, dataLen) -> do
             let keyPtr' = castPtr keyPtr
                 dataPtr' = castPtr dataPtr
                 dataLen' = fromIntegral dataLen
-            newPtr <- c_decrypt dataLen' dataPtr' keyPtr'
-            let newPtr' = castPtr newPtr
-            unsafePackCStringFinalizer newPtr' dataLen $ free newPtr'
+            allocaBytes 4 $ \lenp -> do
+                newPtr <- c_decrypt dataLen' dataPtr' keyPtr' lenp
+                if newPtr == nullPtr
+                    then return Nothing
+                    else do
+                        let newPtr' = castPtr newPtr
+                        len <- peek lenp
+                        let len' = fromIntegral len
+                        bs <- unsafePackCStringFinalizer newPtr' len'
+                            $ free newPtr'
+                        return $ Just bs
 
 foreign import ccall unsafe "encrypt"
-    c_encrypt :: CUInt -> Ptr CUChar -> Ptr CUChar -> IO (Ptr CUChar)
+    c_encrypt :: CUInt -> Ptr CUChar -> Ptr CUChar -> Ptr CUInt
+              -> IO (Ptr CChar)
 
 foreign import ccall unsafe "decrypt"
-    c_decrypt :: CUInt -> Ptr CUChar -> Ptr CUChar -> IO (Ptr CUChar)
+    c_decrypt :: CUInt -> Ptr CChar -> Ptr CUChar -> Ptr CUInt
+              -> IO (Ptr CUChar)

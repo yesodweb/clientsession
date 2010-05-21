@@ -25,14 +25,14 @@ propEncDec :: S.ByteString -> Bool
 propEncDec bs = unsafePerformIO $ do
     key <- getDefaultKey
     let s = encrypt key bs
-    let bs' = decrypt key s :: Either ClientSessionException S.ByteString
-    return $ Right bs == bs'
+    let bs' = decrypt key s
+    return $ Just bs == bs'
 
 propEncDecFailure :: S.ByteString -> Bool
 propEncDecFailure bs = unsafePerformIO $ do
     key <- getDefaultKey
     let s = encrypt key bs
-    let bs' = decrypt key $ (head s `addChar` 1) : drop 1 s
+    let bs' = decrypt key $ (S.head s + 1) `S.cons` S.drop 1 s
     return $ Just bs /= bs'
 
 propAES :: S.ByteString -> S.ByteString -> Bool

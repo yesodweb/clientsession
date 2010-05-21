@@ -30,9 +30,7 @@ module Web.ClientSession
 import Control.Failure
 import Control.Monad
 
-import qualified Codec.Encryption.AES as AES
-import qualified Codec.Binary.Base64Url as Base64
-import qualified Data.Digest.Pure.MD5 as MD5
+import Codec.Encryption.AES
 
 import Data.Typeable (Typeable)
 import Control.Exception
@@ -97,40 +95,3 @@ randomKey = do
                 ([], g)
                 [1..minKeyLength]
     return $ S.pack $ map fromIntegral nums
-
--- | Encrypt with the given key and base-64 encode.
--- A hash is stored inside the encrypted key so that, upon decryption,
--- integrity can be guaranteed.
-encrypt :: S.ByteString    -- ^ The key used for encryption.
-        -> S.ByteString    -- ^ The data to encrypt.
-        -> String     -- ^ Encrypted and encoded data.
-encrypt k bs =
-    let bs' = encode bs
-        padded = bs' `S.append` S.pack (flip replicate 0 $
-                    (16 - (S.length bs' `mod` 16)))
-        withHash = encode (MD5.md5 $ L.fromChunks [padded]) `S.append` padded
-        encrypted = AES.encrypt k withHash
-     in Base64.encode $ S.unpack encrypted
-
--- | Base-64 decode and decrypt with the given key, if possible.  Calls
--- 'failure' if either the original string is not a valid base-64 encoded
--- string, or the hash at the beginning of the decrypted string does not match.
-decrypt :: (Monad m, Failure ClientSessionException m)
-        => S.ByteString         -- ^ The key used for encryption.
-        -> String               -- ^ Data to decrypt.
-        -> m S.ByteString       -- ^ The decrypted data, if possible.
-decrypt k x = do
-    decoded <- case Base64.decode x of
-                    Nothing -> failure $ InvalidBase64 x
-                    Just y -> return y
-    decrypted <-
-        case AES.decrypt k $ S.pack decoded of
-            Nothing -> failure NotValidEncodedByteString
-            Just y -> return y
-    let (expected, rest) = S.splitAt 16 decrypted
-    let actual = encode $ MD5.md5 $ L.fromChunks [rest]
-    unless (expected == actual) $ failure
-                                $ MismatchedHash expected actual
-    case decode rest of
-        Left _ -> failure NotValidEncodedByteString
-        Right y -> return y
