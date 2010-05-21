@@ -11,7 +11,7 @@ void ExpandKey(uchar *key, uchar *expkey);
 void Encrypt (uchar *in, uchar *expkey, uchar *out);
 void Decrypt (uchar *in, uchar *expkey, uchar *out);
 
-void get_hash(uchar *out, uchar *in, uint len)
+void get_hash(uint *out, uchar *in, uint len)
 {
 	uint32_t hash = 0;
 
@@ -20,7 +20,7 @@ void get_hash(uchar *out, uchar *in, uint len)
 		hash += *in;
 	}
 
-	memcpy(out, &hash, 4);
+	*out = hash;
 }
 
 /* http://base64.sourceforge.net/b64.c.  LICENCE:        Copyright (c) 2001
@@ -68,10 +68,8 @@ int parse_char(uchar *out, char in)
 	} else if (in == '/') {
 		*out = 63;
 	} else {
-		printf("invalid char: %c\n", in);
 		return 0;
 	}
-	printf("parsed char: %c %d\n", in, (int) *out);
 	return 1;
 }
 
@@ -106,7 +104,7 @@ char * encrypt(uint32_t len, uchar *in, uchar *key, uint *outlen)
 	totlen += 16 - (totlen % 16);
 	tmp = alloca(totlen);
 	bzero(tmp, totlen);
-	get_hash(tmp, in, len);
+	get_hash((uint*) tmp, in, len);
 	memcpy(tmp + 4, &len, 4);
 	memcpy(tmp + 8, in, len);
 
@@ -120,7 +118,6 @@ char * encrypt(uint32_t len, uchar *in, uchar *key, uint *outlen)
 	encoded_len = (totlen + 2 - ((totlen + 2) % 3)) / 3 * 4;
 	out = malloc(encoded_len + 1);
 	out[encoded_len] = 0;
-	printf("%u\n", totlen);
 	base64_enc(out, tmp, totlen);
 
 	*outlen = encoded_len;
@@ -157,7 +154,6 @@ uchar * decrypt(uint len, char *in, uchar *key, uint *out_len)
 	orig_len = *(out + 4);
 	get_hash(&hash, out + 8, orig_len);
 	if (orig_hash != hash) {
-		printf("orig hash: %u, hash: %u\n", orig_hash, hash);
 		return 0;
 	}
 

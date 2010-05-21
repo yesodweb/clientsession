@@ -4,11 +4,8 @@ module Codec.Encryption.AES
     , decrypt
     ) where
 
-import Data.ByteString (ByteString, pack)
-import qualified Data.ByteString as S
+import Data.ByteString (ByteString)
 import Data.ByteString.Unsafe
-
-import Data.Serialize
 
 import Foreign.C
 import Foreign.Ptr

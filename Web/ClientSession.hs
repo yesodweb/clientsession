@@ -27,8 +27,6 @@ module Web.ClientSession
     , ClientSessionException (..)
     ) where
 
-import Control.Failure
-import Control.Monad
 
 import Codec.Encryption.AES
 
@@ -38,9 +36,7 @@ import Control.Exception
 import System.Directory
 
 import qualified Data.ByteString as S
-import qualified Data.ByteString.Lazy as L
 
-import Data.Serialize
 import System.Random
 
 type Key = S.ByteString
