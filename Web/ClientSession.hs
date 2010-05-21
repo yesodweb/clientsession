@@ -1,6 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE ForeignFunctionInterface #-}
 ---------------------------------------------------------
 --
 -- Module        : Web.ClientSession
@@ -23,21 +22,20 @@ module Web.ClientSession
       -- * Actual encryption/decryption
     , encrypt
     , decrypt
-      -- * Exceptions
-    , ClientSessionException (..)
     ) where
 
-
-import Codec.Encryption.AES
-
-import Data.Typeable (Typeable)
-import Control.Exception
-
 import System.Directory
-
 import qualified Data.ByteString as S
 
 import System.Random
+
+import Data.ByteString.Unsafe
+
+import Foreign.C
+import Foreign.Ptr
+import Foreign.Marshal.Alloc
+import Foreign.Storable
+import System.IO.Unsafe
 
 type Key = S.ByteString
 
@@ -48,15 +46,6 @@ defaultKeyFile = "client_session_key.aes"
 -- | Simply calls 'getKey' 'defaultKeyFile'.
 getDefaultKey :: IO Key
 getDefaultKey = getKey defaultKeyFile
-
-data ClientSessionException =
-      InvalidBase64 String
-    | MismatchedHash { expectedHash :: S.ByteString
-                     , actualHash   :: S.ByteString
-                     }
-    | NotValidEncodedByteString
-    deriving (Show, Typeable, Eq)
-instance Exception ClientSessionException
 
 -- | Get a key from the given text file.
 --
@@ -91,3 +80,48 @@ randomKey = do
                 ([], g)
                 [1..minKeyLength]
     return $ S.pack $ map fromIntegral nums
+
+encrypt :: S.ByteString -- ^ key
+        -> S.ByteString -- ^ data
+        -> S.ByteString
+encrypt keyBS dataBS = unsafePerformIO $
+    unsafeUseAsCString keyBS $ \keyPtr ->
+        unsafeUseAsCStringLen dataBS $ \(dataPtr, dataLen) -> do
+            let keyPtr' = castPtr keyPtr
+                dataPtr' = castPtr dataPtr
+                dataLen' = fromIntegral dataLen
+            allocaBytes 4 $ \lenp -> do
+                newPtr <- c_encrypt dataLen' dataPtr' keyPtr' lenp
+                let newPtr' = castPtr newPtr
+                len <- peek lenp
+                let len' = fromIntegral len
+                unsafePackCStringFinalizer newPtr' len' $ free newPtr'
+
+decrypt :: S.ByteString -- ^ key
+        -> S.ByteString -- ^ data
+        -> Maybe S.ByteString
+decrypt keyBS dataBS = unsafePerformIO $
+    unsafeUseAsCString keyBS $ \keyPtr ->
+        unsafeUseAsCStringLen dataBS $ \(dataPtr, dataLen) -> do
+            let keyPtr' = castPtr keyPtr
+                dataPtr' = castPtr dataPtr
+                dataLen' = fromIntegral dataLen
+            allocaBytes 4 $ \lenp -> do
+                newPtr <- c_decrypt dataLen' dataPtr' keyPtr' lenp
+                if newPtr == nullPtr
+                    then return Nothing
+                    else do
+                        let newPtr' = castPtr newPtr
+                        len <- peek lenp
+                        let len' = fromIntegral len
+                        bs <- unsafePackCStringFinalizer newPtr' len'
+                            $ free newPtr'
+                        return $ Just bs
+
+foreign import ccall unsafe "encrypt"
+    c_encrypt :: CUInt -> Ptr CUChar -> Ptr CUChar -> Ptr CUInt
+              -> IO (Ptr CChar)
+
+foreign import ccall unsafe "decrypt"
+    c_decrypt :: CUInt -> Ptr CChar -> Ptr CUChar -> Ptr CUInt
+              -> IO (Ptr CUChar)
