@@ -110,9 +110,9 @@ char * encrypt(uint32_t len, uchar *in, uchar *key, uint *outlen)
 
 	ExpandKey(key, expkey);
 	for (i = 0; i < totlen; i += 16) {
-		//Encrypt(tmp + i, expkey, buff);
+		Encrypt(tmp + i, expkey, buff);
 
-		//memcpy(tmp + 1, buff, 16);
+		memcpy(tmp + i, buff, 16);
 	}
 
 	encoded_len = (totlen + 2 - ((totlen + 2) % 3)) / 3 * 4;
@@ -136,7 +136,7 @@ uchar * decrypt(uint len, char *in, uchar *key, uint *out_len)
 
 	if (! len % 4) return 0;
 	outlen = len / 4 * 3;
-	out = alloca(outlen);
+	out = alloca(outlen + 16 - (outlen % 16));
 
 	if (! base64_dec(out, in, len)) {
 		return 0;
@@ -144,14 +144,14 @@ uchar * decrypt(uint len, char *in, uchar *key, uint *out_len)
 
 	ExpandKey(key, expkey);
 
-	for (i = 0; i < len; i += 16) {
-		//Decrypt(out + i, expkey, buff);
-
-		//memcpy(out + i, buff, 16);
+	for (i = 0; i < outlen; i += 16) {
+		Decrypt(out + i, expkey, buff);
+		memcpy(out + i, buff, 16);
 	}
 
 	orig_hash = *((uint*) out);
 	orig_len = *((uint32_t*) (out + 4));
+	if (orig_len > outlen) return 0;
 	get_hash(&hash, out + 8, orig_len);
 	if (orig_hash != hash) {
 		return 0;
