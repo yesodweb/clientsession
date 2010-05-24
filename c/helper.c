@@ -132,7 +132,7 @@ uchar * decrypt(uint len, char *in, uchar *key, uint *out_len)
 	uchar buff[16];
 	uint outlen;
 	uint hash, orig_hash;
-	uint orig_len;
+	uint32_t orig_len;
 
 	if (! len % 4) return 0;
 	outlen = len / 4 * 3;
@@ -151,7 +151,7 @@ uchar * decrypt(uint len, char *in, uchar *key, uint *out_len)
 	}
 
 	orig_hash = *((uint*) out);
-	orig_len = *(out + 4);
+	orig_len = *((uint32_t*) (out + 4));
 	get_hash(&hash, out + 8, orig_len);
 	if (orig_hash != hash) {
 		return 0;
