@@ -101,7 +101,7 @@ char * encrypt(uint32_t len, uchar *in, uchar *key, uint *outlen)
 	 * Need to align to 16 bytes.
 	 */
 	totlen = len + 8;
-	totlen += 16 - (totlen % 16);
+	totlen += (- totlen) % 16;
 	tmp = alloca(totlen);
 	bzero(tmp, totlen);
 	get_hash((uint*) tmp, in, len);
@@ -115,7 +115,7 @@ char * encrypt(uint32_t len, uchar *in, uchar *key, uint *outlen)
 		memcpy(tmp + i, buff, 16);
 	}
 
-	encoded_len = (totlen + 2 - ((totlen + 2) % 3)) / 3 * 4;
+	encoded_len = ((totlen + 2) / 3) * 4;
 	out = malloc(encoded_len + 1);
 	out[encoded_len] = 0;
 	base64_enc(out, tmp, totlen);
@@ -136,7 +136,7 @@ uchar * decrypt(uint len, char *in, uchar *key, uint *out_len)
 
 	if (! len % 4) return 0;
 	outlen = len / 4 * 3;
-	out = alloca(outlen + 16 - (outlen % 16));
+	out = alloca(outlen + (- outlen) % 16);
 
 	if (! base64_dec(out, in, len)) {
 		return 0;

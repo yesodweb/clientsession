@@ -4,7 +4,7 @@
 --
 -- Module        : Web.ClientSession
 -- Copyright     : Michael Snoyman
--- License       : SD3
+-- License       : BSD3
 --
 -- Maintainer    : Michael Snoyman <michael@snoyman.com>
 -- Stability     : Stable
