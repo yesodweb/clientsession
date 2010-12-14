@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
+{-# LANGUAGE TemplateHaskell #-}
 ---------------------------------------------------------
 --
 -- Module        : Web.ClientSession
@@ -17,8 +18,10 @@ module Web.ClientSession
     ( -- * Automatic key generation
       Key
     , getKey
+    , embedKey
     , defaultKeyFile
     , getDefaultKey
+    , embedDefaultKey
       -- * Actual encryption/decryption
     , encrypt
     , decrypt
@@ -26,6 +29,7 @@ module Web.ClientSession
 
 import System.Directory
 import qualified Data.ByteString as S
+import qualified Data.ByteString.Char8 as B
 
 import System.Random
 
@@ -36,6 +40,7 @@ import Foreign.Ptr
 import Foreign.Marshal.Alloc
 import Foreign.Storable
 import System.IO.Unsafe
+import Language.Haskell.TH
 
 type Key = S.ByteString
 
@@ -46,6 +51,10 @@ defaultKeyFile = "client_session_key.aes"
 -- | Simply calls 'getKey' 'defaultKeyFile'.
 getDefaultKey :: IO Key
 getDefaultKey = getKey defaultKeyFile
+
+-- | Simply calls 'embedKey' 'defaultKeyFile'.
+embedDefaultKey :: Q Exp
+embedDefaultKey = embedKey defaultKeyFile
 
 -- | Get a key from the given text file.
 --
@@ -67,6 +76,15 @@ getKey keyFile = do
         key' <- randomKey
         S.writeFile keyFile key'
         return key'
+
+-- | Embed a key from the given text file into haskell source.
+--
+-- Eliminates overhead of reading key file with each request.
+embedKey :: FilePath -> Q Exp
+embedKey keyFile = do
+  k <- runIO $ getKey keyFile
+  let cs = B.unpack k
+  [| B.pack |] `appE` (litE $ stringL cs)
 
 minKeyLength :: Int
 minKeyLength = 16
