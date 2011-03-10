@@ -41,6 +41,7 @@ import Foreign.Marshal.Alloc
 import Foreign.Storable
 import System.IO.Unsafe
 import Language.Haskell.TH
+import qualified Data.Ascii as A
 
 type Key = S.ByteString
 
@@ -101,8 +102,8 @@ randomKey = do
 
 encrypt :: S.ByteString -- ^ key
         -> S.ByteString -- ^ data
-        -> S.ByteString
-encrypt keyBS dataBS = unsafePerformIO $
+        -> A.Ascii
+encrypt keyBS dataBS = A.unsafeFromByteString $ unsafePerformIO $
     unsafeUseAsCString keyBS $ \keyPtr ->
         unsafeUseAsCStringLen dataBS $ \(dataPtr, dataLen) -> do
             let keyPtr' = castPtr keyPtr
@@ -116,9 +117,9 @@ encrypt keyBS dataBS = unsafePerformIO $
                 unsafePackCStringFinalizer newPtr' len' $ free newPtr'
 
 decrypt :: S.ByteString -- ^ key
-        -> S.ByteString -- ^ data
+        -> A.Ascii -- ^ data
         -> Maybe S.ByteString
-decrypt keyBS dataBS = unsafePerformIO $
+decrypt keyBS dataA = unsafePerformIO $
     unsafeUseAsCString keyBS $ \keyPtr ->
         unsafeUseAsCStringLen dataBS $ \(dataPtr, dataLen) -> do
             let keyPtr' = castPtr keyPtr
@@ -135,6 +136,8 @@ decrypt keyBS dataBS = unsafePerformIO $
                         bs <- unsafePackCStringFinalizer newPtr' len'
                             $ free newPtr'
                         return $ Just bs
+  where
+    dataBS = A.toByteString dataA
 
 foreign import ccall unsafe "encrypt"
     c_encrypt :: CUInt -> Ptr CUChar -> Ptr CUChar -> Ptr CUInt
