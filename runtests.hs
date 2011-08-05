@@ -12,7 +12,6 @@ import qualified Data.ByteString.Char8 as S8
 
 import Web.ClientSession
 import System.IO.Unsafe
-import qualified Data.Ascii as A
 
 main :: IO ()
 main = defaultMain
@@ -33,15 +32,15 @@ propEncDec bs = unsafePerformIO $ do
 propEncDecFailure :: S.ByteString -> Bool
 propEncDecFailure bs = unsafePerformIO $ do
     key <- getDefaultKey
-    let s = A.toByteString $ encrypt key bs
-    let bs' = decrypt key $ A.unsafeFromByteString $ (S.head s + 1) `S.cons` S.drop 1 s
+    let s = encrypt key bs
+    let bs' = decrypt key $ (S.head s + 1) `S.cons` S.drop 1 s
     return $ Just bs /= bs'
 
 propAES :: S.ByteString -> S.ByteString -> Bool
 propAES key bs = decrypt key (encrypt key bs) == Just bs
 
 propAESChanges :: S.ByteString -> S.ByteString -> Bool
-propAESChanges key bs = A.toByteString (encrypt key bs) /= bs
+propAESChanges key bs = encrypt key bs /= bs
 
 caseSpecific :: Assertion
 caseSpecific = do
