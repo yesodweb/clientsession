@@ -1,11 +1,11 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
-import Test.Framework (defaultMain)
-import Test.QuickCheck
-import Test.Framework.Providers.QuickCheck2
-import Test.Framework.Providers.HUnit
 import Test.HUnit
+import Test.Hspec.Monadic
+import Test.QuickCheck hiding (property)
+import Test.Hspec.QuickCheck
+import Test.Hspec.HUnit ()
 
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as S8
@@ -14,13 +14,12 @@ import Web.ClientSession
 import System.IO.Unsafe
 
 main :: IO ()
-main = defaultMain
-    [ testProperty "encrypt/decrypt success" propEncDec
-    , testProperty "encrypt/decrypt failure" propEncDecFailure
-    , testProperty "AES encrypt/decrypt success" propAES
-    , testProperty "AES encryption changes bs" propAESChanges
-    , testCase "specific values" caseSpecific
-    ]
+main = hspecX $ describe "client session" $ do
+    it "encrypt/decrypt success" $ property propEncDec
+    it "encrypt/decrypt failure" $ property propEncDecFailure
+    it "AES encrypt/decrypt success" $ property propAES
+    it "AES encryption changes bs" $ property propAESChanges
+    it "specific values" caseSpecific
 
 propEncDec :: S.ByteString -> Bool
 propEncDec bs = unsafePerformIO $ do

@@ -27,17 +27,12 @@ library
     ghc-options:     -Wall
     c-sources:       c/aestable.c c/helper.c
 
-executable             runtests
-    if flag(test)
-        Buildable: True
-        cpp-options:   -DTEST
-        build-depends: test-framework,
-                       test-framework-quickcheck2,
-                       test-framework-hunit,
-                       QuickCheck >= 2 && < 3,
-                       HUnit
-    else
-        Buildable: False
+test-suite runtests
+    type: exitcode-stdio-1.0
+    cpp-options:   -DTEST
+    build-depends: hspec == 0.6.*,
+                   QuickCheck >= 2 && < 3,
+                   HUnit
     ghc-options:     -Wall
     main-is:         runtests.hs
     c-sources:       c/aestable.c c/helper.c
