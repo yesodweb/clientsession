@@ -17,11 +17,15 @@
 module Web.ClientSession
     ( -- * Automatic key generation
       Key
+    , IV
+    , randomIV
+    , mkIV
     , getKey
     , defaultKeyFile
     , getDefaultKey
       -- * Actual encryption/decryption
     , encrypt
+    , encryptIO
     , decrypt
     ) where
 
@@ -32,6 +36,17 @@ import Crypto.Cipher.AES (Key)
 import qualified Data.ByteString.Base64 as B
 
 import System.Random
+
+newtype IV = IV S.ByteString
+    deriving Show
+
+mkIV :: S.ByteString -> Maybe IV
+mkIV bs
+    | S.length bs == 16 = Just $ IV bs
+    | otherwise = Nothing
+
+randomIV :: IO IV
+randomIV = fmap IV $ randomBytes 16
 
 -- | The default key file.
 defaultKeyFile :: String
@@ -58,24 +73,34 @@ getKey keyFile = do
         S.writeFile keyFile bs
         return key'
 
-randomKey :: IO (S.ByteString, Key)
-randomKey = do
+randomBytes :: Int -> IO S.ByteString
+randomBytes len = do
     g <- newStdGen
     let (nums, _) =
             foldr
                 (\_ (n, g') -> let (n', g'') = next g' in (n' : n, g''))
                 ([], g)
-                [1..32]
-    let bs = S.pack $ map fromIntegral nums
+                [1..len]
+    return $ S.pack $ map fromIntegral nums
+
+randomKey :: IO (S.ByteString, Key)
+randomKey = do
+    bs <- randomBytes 32
     case A.initKey256 bs of
         Left e -> error e -- should never happen
         Right key -> return (bs, key)
 
-encrypt :: Key -- ^ key
+encryptIO :: Key -> S.ByteString -> IO S.ByteString
+encryptIO key x = do
+    iv <- randomIV
+    return $ encrypt key iv x
+
+encrypt :: Key
+        -> IV
         -> S.ByteString -- ^ data
         -> S.ByteString
-encrypt key x =
-    B.encode $ A.encrypt key y
+encrypt key (IV iv) x =
+    B.encode $ iv `S.append` A.encryptCBC key iv y
   where
     toPad = 16 - S.length x `mod` 16
     pad = S.replicate toPad $ fromIntegral toPad
@@ -86,10 +111,11 @@ decrypt :: Key -- ^ key
         -> Maybe S.ByteString
 decrypt key dataBS64 = do
     dataBS <- either (const Nothing) Just $ B.decode dataBS64
-    if S.length dataBS `mod` 16 /= 0
+    if S.length dataBS `mod` 16 /= 0 || S.length dataBS < 16
         then Nothing
         else do
-            let x = A.decrypt key dataBS
+            let (iv, encrypted) = S.splitAt 16 dataBS
+            let x = A.decryptCBC key iv encrypted
             (td, _) <- S.uncons x
             if td > 0 && td <= 16
                 then Just $ S.drop (fromIntegral td) x
