@@ -18,31 +18,20 @@ module Web.ClientSession
     ( -- * Automatic key generation
       Key
     , getKey
-    , embedKey
     , defaultKeyFile
     , getDefaultKey
-    , embedDefaultKey
       -- * Actual encryption/decryption
     , encrypt
     , decrypt
     ) where
 
-import System.Directory
+import System.Directory (doesFileExist)
 import qualified Data.ByteString as S
-import qualified Data.ByteString.Char8 as B
+import qualified Crypto.Cipher.AES as A
+import Crypto.Cipher.AES (Key)
+import qualified Data.ByteString.Base64 as B
 
 import System.Random
-
-import Data.ByteString.Unsafe
-
-import Foreign.C
-import Foreign.Ptr
-import Foreign.Marshal.Alloc
-import Foreign.Storable
-import System.IO.Unsafe
-import Language.Haskell.TH
-
-type Key = S.ByteString
 
 -- | The default key file.
 defaultKeyFile :: String
@@ -51,10 +40,6 @@ defaultKeyFile = "client_session_key.aes"
 -- | Simply calls 'getKey' 'defaultKeyFile'.
 getDefaultKey :: IO Key
 getDefaultKey = getKey defaultKeyFile
-
--- | Simply calls 'embedKey' 'defaultKeyFile'.
-embedDefaultKey :: Q Exp
-embedDefaultKey = embedKey defaultKeyFile
 
 -- | Get a key from the given text file.
 --
@@ -65,81 +50,47 @@ getKey :: FilePath     -- ^ File name where key is stored.
 getKey keyFile = do
     exists <- doesFileExist keyFile
     if exists
-        then do
-            key <- S.readFile keyFile
-            if S.length key < minKeyLength
-                then newKey
-                else return key
+        then S.readFile keyFile >>= either (const newKey) return . A.initKey256
         else newKey
   where
     newKey = do
-        key' <- randomKey
-        S.writeFile keyFile key'
+        (bs, key') <- randomKey
+        S.writeFile keyFile bs
         return key'
 
--- | Embed a key from the given text file into haskell source.
---
--- Eliminates overhead of reading key file with each request.
-embedKey :: FilePath -> Q Exp
-embedKey keyFile = do
-  k <- runIO $ getKey keyFile
-  let cs = B.unpack k
-  [| B.pack |] `appE` (litE $ stringL cs)
-
-minKeyLength :: Int
-minKeyLength = 16
-
-randomKey :: IO Key
+randomKey :: IO (S.ByteString, Key)
 randomKey = do
     g <- newStdGen
     let (nums, _) =
             foldr
                 (\_ (n, g') -> let (n', g'') = next g' in (n' : n, g''))
                 ([], g)
-                [1..minKeyLength]
-    return $ S.pack $ map fromIntegral nums
+                [1..32]
+    let bs = S.pack $ map fromIntegral nums
+    case A.initKey256 bs of
+        Left e -> error e -- should never happen
+        Right key -> return (bs, key)
 
-encrypt :: S.ByteString -- ^ key
+encrypt :: Key -- ^ key
         -> S.ByteString -- ^ data
         -> S.ByteString
-encrypt keyBS dataBS = unsafePerformIO $
-    unsafeUseAsCString keyBS $ \keyPtr ->
-        unsafeUseAsCStringLen dataBS $ \(dataPtr, dataLen) -> do
-            let keyPtr' = castPtr keyPtr
-                dataPtr' = castPtr dataPtr
-                dataLen' = fromIntegral dataLen
-            allocaBytes 4 $ \lenp -> do
-                newPtr <- c_encrypt dataLen' dataPtr' keyPtr' lenp
-                let newPtr' = castPtr newPtr
-                len <- peek lenp
-                let len' = fromIntegral len
-                unsafePackCStringFinalizer newPtr' len' $ free newPtr'
+encrypt key x =
+    B.encode $ A.encrypt key y
+  where
+    toPad = 16 - S.length x `mod` 16
+    pad = S.replicate toPad $ fromIntegral toPad
+    y = pad `S.append` x
 
-decrypt :: S.ByteString -- ^ key
+decrypt :: Key -- ^ key
         -> S.ByteString -- ^ data
         -> Maybe S.ByteString
-decrypt keyBS dataBS = unsafePerformIO $
-    unsafeUseAsCString keyBS $ \keyPtr ->
-        unsafeUseAsCStringLen dataBS $ \(dataPtr, dataLen) -> do
-            let keyPtr' = castPtr keyPtr
-                dataPtr' = castPtr dataPtr
-                dataLen' = fromIntegral dataLen
-            allocaBytes 4 $ \lenp -> do
-                newPtr <- c_decrypt dataLen' dataPtr' keyPtr' lenp
-                if newPtr == nullPtr
-                    then return Nothing
-                    else do
-                        let newPtr' = castPtr newPtr
-                        len <- peek lenp
-                        let len' = fromIntegral len
-                        bs <- unsafePackCStringFinalizer newPtr' len'
-                            $ free newPtr'
-                        return $ Just bs
-
-foreign import ccall unsafe "encrypt"
-    c_encrypt :: CUInt -> Ptr CUChar -> Ptr CUChar -> Ptr CUInt
-              -> IO (Ptr CChar)
-
-foreign import ccall unsafe "decrypt"
-    c_decrypt :: CUInt -> Ptr CChar -> Ptr CUChar -> Ptr CUInt
-              -> IO (Ptr CUChar)
+decrypt key dataBS64 = do
+    dataBS <- either (const Nothing) Just $ B.decode dataBS64
+    if S.length dataBS `mod` 16 /= 0
+        then Nothing
+        else do
+            let x = A.decrypt key dataBS
+            (td, _) <- S.uncons x
+            if td > 0 && td <= 16
+                then Just $ S.drop (fromIntegral td) x
+                else Nothing

@@ -18,24 +18,22 @@ flag test
   default: False
 
 library
-    build-depends:   base >=4 && <5,
-                     bytestring >= 0.9 && < 0.10,
-                     directory >= 1 && < 1.2,
-                     random >= 1.0.0.2 && < 1.1,
-                     template-haskell
+    build-depends:   base                >=4           && < 5
+                   , bytestring          >= 0.9        && < 0.10
+                   , directory           >= 1          && < 1.2
+                   , random              >= 1.0.0.2    && < 1.1
+                   , cryptocipher        >= 0.2.5      && < 0.3
+                   , base64-bytestring   >= 0.1.0.3    && < 0.2
     exposed-modules: Web.ClientSession
     ghc-options:     -Wall
-    c-sources:       c/aestable.c c/helper.c
 
 test-suite runtests
     type: exitcode-stdio-1.0
-    cpp-options:   -DTEST
-    build-depends: hspec == 0.6.*,
-                   QuickCheck >= 2 && < 3,
-                   HUnit
+    build-depends: hspec      == 0.6.*
+                 , QuickCheck >= 2 && < 3
+                 , HUnit
     ghc-options:     -Wall
     main-is:         runtests.hs
-    c-sources:       c/aestable.c c/helper.c
 
 source-repository head
   type:     git

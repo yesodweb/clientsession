@@ -6,6 +6,8 @@ import Test.Hspec.Monadic
 import Test.QuickCheck hiding (property)
 import Test.Hspec.QuickCheck
 import Test.Hspec.HUnit ()
+import Crypto.Cipher.AES (initKey256)
+import Control.Monad (replicateM)
 
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as S8
@@ -35,10 +37,10 @@ propEncDecFailure bs = unsafePerformIO $ do
     let bs' = decrypt key $ (S.head s + 1) `S.cons` S.drop 1 s
     return $ Just bs /= bs'
 
-propAES :: S.ByteString -> S.ByteString -> Bool
+propAES :: Key -> S.ByteString -> Bool
 propAES key bs = decrypt key (encrypt key bs) == Just bs
 
-propAESChanges :: S.ByteString -> S.ByteString -> Bool
+propAESChanges :: Key -> S.ByteString -> Bool
 propAESChanges key bs = encrypt key bs /= bs
 
 caseSpecific :: Assertion
@@ -51,3 +53,8 @@ caseSpecific = do
 
 instance Arbitrary S.ByteString where
     arbitrary = S.pack `fmap` arbitrary
+
+instance Arbitrary Key where
+    arbitrary = do
+        ws <- replicateM 32 arbitrary
+        either error return $ initKey256 $ S.pack ws
