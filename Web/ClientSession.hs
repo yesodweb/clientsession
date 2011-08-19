@@ -34,8 +34,7 @@ import qualified Data.ByteString as S
 import qualified Crypto.Cipher.AES as A
 import Crypto.Cipher.AES (Key)
 import qualified Data.ByteString.Base64 as B
-
-import System.Random
+import Crypto.Random (newGenIO, genBytes, SystemRandom)
 
 newtype IV = IV S.ByteString
     deriving Show
@@ -75,13 +74,8 @@ getKey keyFile = do
 
 randomBytes :: Int -> IO S.ByteString
 randomBytes len = do
-    g <- newStdGen
-    let (nums, _) =
-            foldr
-                (\_ (n, g') -> let (n', g'') = next g' in (n' : n, g''))
-                ([], g)
-                [1..len]
-    return $ S.pack $ map fromIntegral nums
+    g <- newGenIO
+    either (error . show) (return . fst) $ genBytes len (g :: SystemRandom)
 
 randomKey :: IO (S.ByteString, Key)
 randomKey = do
