@@ -9,7 +9,7 @@ description:     Achieves security through AES encryption and MD5 hashing.
                  Uses base64 encoding to avoid any issues with characters.
 category:        Web
 stability:       stable
-cabal-version:   >= 1.6
+cabal-version:   >= 1.8
 build-type:      Simple
 homepage:        http://github.com/snoyberg/clientsession/tree/master
 
