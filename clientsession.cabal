@@ -20,19 +20,28 @@ flag test
 library
     build-depends:   base                >=4           && < 5
                    , bytestring          >= 0.9        && < 0.10
+                   , cereal              >= 0.3        && < 0.4
                    , directory           >= 1          && < 1.2
                    , crypto-api          >= 0.6.4      && < 0.7
                    , cryptocipher        >= 0.2.5      && < 0.3
+                   , cryptohash          >= 0.7.1      && < 0.8
                    , base64-bytestring   >= 0.1.0.3    && < 0.2
     exposed-modules: Web.ClientSession
     ghc-options:     -Wall
+    hs-source-dirs:  src
 
 test-suite runtests
     type: exitcode-stdio-1.0
-    build-depends: hspec      == 0.6.*
-                 , QuickCheck >= 2 && < 3
-                 , HUnit
+    build-depends:   base                >=4           && < 5
+                   , bytestring          >= 0.9        && < 0.10
+                   , cryptocipher        >= 0.2.5      && < 0.3
+                   , hspec               == 0.6.*
+                   , QuickCheck          >= 2          && < 3
+                   , HUnit
+                   -- finally, our own package
+                   , clientsession
     ghc-options:     -Wall
+    hs-source-dirs:  tests
     main-is:         runtests.hs
 
 source-repository head
