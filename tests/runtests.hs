@@ -6,7 +6,6 @@ import Test.Hspec.Monadic
 import Test.QuickCheck hiding (property)
 import Test.Hspec.QuickCheck
 import Test.Hspec.HUnit ()
-import Crypto.Cipher.AES (initKey256)
 import Control.Monad (replicateM)
 
 import qualified Data.ByteString as S
@@ -57,8 +56,9 @@ instance Arbitrary S.ByteString where
 
 instance Arbitrary Key where
     arbitrary = do
-        ws <- replicateM 32 arbitrary
-        either error return $ initKey256 $ S.pack ws
+        keySize <- ((+32) . (`mod` 64)) `fmap` arbitrary
+        ws <- replicateM keySize arbitrary
+        either error return $ initKey $ S.pack ws
 
 instance Arbitrary IV where
     arbitrary = do
