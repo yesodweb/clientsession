@@ -1,12 +1,13 @@
 name:            clientsession
-version:         0.7.1
+version:         0.7.2
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michael@snoyman.com>
 maintainer:      Michael Snoyman <michael@snoyman.com>
 synopsis:        Store session data in a cookie.
-description:     Achieves security through AES encryption and MD5 hashing.
-                 Uses base64 encoding to avoid any issues with characters.
+description:     Achieves security through AES-CBC encryption and
+                 HMAC-SHA256 authentication.  Uses Base64
+                 encoding to avoid any issues with characters.
 category:        Web
 stability:       stable
 cabal-version:   >= 1.8
