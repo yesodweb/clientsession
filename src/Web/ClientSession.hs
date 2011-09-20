@@ -65,11 +65,13 @@ import qualified Data.ByteString as S
 import qualified Data.ByteString.Base64 as B
 
 -- from cereal
-import Data.Serialize (encode)
+import Data.Serialize (encode, decode)
 
 -- from crypto-api
+import Crypto.Classes (buildKey)
 import Crypto.HMAC (MacKey(..), hmac')
 import Crypto.Random (newGenIO, genBytes, SystemRandom)
+import qualified Crypto.Modes as Modes
 
 -- from cryptocipher
 import qualified Crypto.Cipher.AES as A
@@ -85,26 +87,24 @@ import Crypto.Hash.SHA256 (SHA256)
 -- any size may be used.
 --
 -- See also 'getDefaultKey' and 'initKey'.
-data Key = Key { aesKey  :: A.Key
+data Key = Key { aesKey  :: A.AES256
                , hmacKey :: MacKey }
-         deriving (Eq, Show)
 
--- | The initialization vector used by AES in CBC mode.  Should
--- be exactly 16 bytes long.
-newtype IV = IV S.ByteString
-    deriving Show
+-- | The initialization vector used by AES.  Should be exactly 16
+-- bytes long.
+type IV = Modes.IV A.AES256
 
 -- | Construct an initialization vector from a 'S.ByteString'.
 -- Fails if there isn't exactly 16 bytes.
 mkIV :: S.ByteString -> Maybe IV
-mkIV bs
-    | S.length bs == 16 = Just $ IV bs
-    | otherwise = Nothing
+mkIV bs = case (S.length bs, decode bs) of
+            (16, Right iv) -> Just iv
+            _              -> Nothing
 
 -- | Randomly construct a fresh initialization vector.  You
 -- /should not/ reuse initialization vectors.
 randomIV :: IO IV
-randomIV = fmap IV $ randomBytes 16
+randomIV = Modes.getIVIO
 
 -- | The default key file.
 defaultKeyFile :: FilePath
@@ -153,7 +153,9 @@ randomKey = do
 initKey :: S.ByteString -> Either String Key
 initKey bs | S.length bs < 32 = Left $ "Web.ClientSession.initKey: length of " ++
                                        show (S.length bs) ++ " too small."
-initKey bs = fmap mk $ A.initKey256 preAesKey
+initKey bs = case buildKey preAesKey of
+               Nothing -> Left $ "Web.ClientSession.initKey: unknown error with buildKey."
+               Just k  -> Right (mk k)
     where
       preAesKey | S.length bs >= 64 = S.pack $ uncurry (S.zipWith xor) $ S.splitAt 32 bs
                 | otherwise         = S.take 32 bs
@@ -178,13 +180,10 @@ encrypt :: Key          -- ^ Key of the server.
         -> S.ByteString -- ^ Serialized cookie data.
         -> S.ByteString -- ^ Encoded cookie data to be given to
                         -- the client browser.
-encrypt key (IV iv) x =
-    B.encode $ S.concat [iv, encode auth, encrypted]
+encrypt key iv x =
+    B.encode $ S.concat [encode iv, encode auth, encrypted]
   where
-    toPad = 16 - S.length x `mod` 16
-    pad = S.replicate toPad $ fromIntegral toPad
-    y = pad `S.append` x
-    encrypted = A.encryptCBC (aesKey key) iv y
+    (encrypted, _) = Modes.ctr' Modes.incIV (aesKey key) iv x
     auth = hmac' (hmacKey key) encrypted :: SHA256
 
 -- | Decode (Base64), verify the integrity and authenticity
@@ -196,13 +195,10 @@ decrypt :: Key                -- ^ Key of the server.
         -> Maybe S.ByteString -- ^ Serialized cookie data.
 decrypt key dataBS64 = do
     dataBS <- either (const Nothing) Just $ B.decode dataBS64
-    if S.length dataBS `mod` 16 /= 0 || S.length dataBS < 48
-        then Nothing
-        else do
-            let (iv, (auth, encrypted)) = second (S.splitAt 32) $ S.splitAt 16 dataBS
-                auth' = hmac' (hmacKey key) encrypted :: SHA256
-            guard (encode auth' == auth)
-            let x = A.decryptCBC (aesKey key) iv encrypted
-            (td, _) <- S.uncons x
-            guard (td > 0 && td <= 16)
-            return $ S.drop (fromIntegral td) x
+    guard (S.length dataBS >= 48) -- 16 bytes of IV + 32 bytes of HMAC-SHA256
+    let (iv_e, (auth, encrypted)) = second (S.splitAt 32) $ S.splitAt 16 dataBS
+        auth' = hmac' (hmacKey key) encrypted :: SHA256
+    guard (encode auth' == auth)
+    iv <- either (const Nothing) Just $ decode iv_e
+    let (x, _) = Modes.unCtr' Modes.incIV (aesKey key) iv encrypted
+    return x
