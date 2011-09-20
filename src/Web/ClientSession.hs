@@ -53,7 +53,6 @@ module Web.ClientSession
     ) where
 
 -- from base
-import Control.Arrow (second)
 import Control.Monad (guard)
 import Data.Bits (xor)
 
@@ -180,11 +179,12 @@ encrypt :: Key          -- ^ Key of the server.
         -> S.ByteString -- ^ Serialized cookie data.
         -> S.ByteString -- ^ Encoded cookie data to be given to
                         -- the client browser.
-encrypt key iv x =
-    B.encode $ S.concat [encode iv, encode auth, encrypted]
+encrypt key iv x = B.encode final
   where
     (encrypted, _) = Modes.ctr' Modes.incIV (aesKey key) iv x
-    auth = hmac' (hmacKey key) encrypted :: SHA256
+    toBeAuthed     = encode iv `S.append` encrypted
+    auth           = hmac' (hmacKey key) toBeAuthed :: SHA256
+    final          = encode auth `S.append` toBeAuthed
 
 -- | Decode (Base64), verify the integrity and authenticity
 -- (HMAC-SHA256) and decrypt (AES-CBC) the given encoded cookie
@@ -196,9 +196,10 @@ decrypt :: Key                -- ^ Key of the server.
 decrypt key dataBS64 = do
     dataBS <- either (const Nothing) Just $ B.decode dataBS64
     guard (S.length dataBS >= 48) -- 16 bytes of IV + 32 bytes of HMAC-SHA256
-    let (iv_e, (auth, encrypted)) = second (S.splitAt 32) $ S.splitAt 16 dataBS
-        auth' = hmac' (hmacKey key) encrypted :: SHA256
+    let (auth, toBeAuthed) = S.splitAt 32 dataBS
+        auth' = hmac' (hmacKey key) toBeAuthed :: SHA256
     guard (encode auth' == auth)
+    let (iv_e, encrypted) = S.splitAt 16 toBeAuthed
     iv <- either (const Nothing) Just $ decode iv_e
     let (x, _) = Modes.unCtr' Modes.incIV (aesKey key) iv encrypted
     return x
