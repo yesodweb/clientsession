@@ -16,7 +16,7 @@
 -- Stores session data in a client cookie.  In order to do so,
 -- we:
 --
--- * Encrypt the cookie data using AES in CBC mode.  This allows
+-- * Encrypt the cookie data using AES in CTR mode.  This allows
 -- you to store sensitive information on the client side without
 -- worrying about eavesdropping.
 --
@@ -171,7 +171,7 @@ encryptIO key x = do
     iv <- randomIV
     return $ encrypt key iv x
 
--- | Encrypt (AES-CBC), sign (HMAC-SHA256) and encode (Base64)
+-- | Encrypt (AES-CTR), sign (HMAC-SHA256) and encode (Base64)
 -- the given cookie data.  The returned byte string is ready to
 -- be used in a response header.
 encrypt :: Key          -- ^ Key of the server.
@@ -187,7 +187,7 @@ encrypt key iv x = B.encode final
     final          = encode auth `S.append` toBeAuthed
 
 -- | Decode (Base64), verify the integrity and authenticity
--- (HMAC-SHA256) and decrypt (AES-CBC) the given encoded cookie
+-- (HMAC-SHA256) and decrypt (AES-CTR) the given encoded cookie
 -- data.  Returns the original serialized cookie data.  Fails if
 -- the data is corrupted.
 decrypt :: Key                -- ^ Key of the server.

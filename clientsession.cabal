@@ -5,7 +5,7 @@ license-file:    LICENSE
 author:          Michael Snoyman <michael@snoyman.com>
 maintainer:      Michael Snoyman <michael@snoyman.com>
 synopsis:        Store session data in a cookie.
-description:     Achieves security through AES-CBC encryption and
+description:     Achieves security through AES-CTR encryption and
                  HMAC-SHA256 authentication.  Uses Base64
                  encoding to avoid any issues with characters.
 category:        Web
