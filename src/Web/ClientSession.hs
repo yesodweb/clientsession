@@ -54,7 +54,6 @@ module Web.ClientSession
 
 -- from base
 import Control.Monad (guard)
-import Data.Bits (xor)
 
 -- from directory
 import System.Directory (doesFileExist)
@@ -141,28 +140,23 @@ randomBytes len = do
 -- saved for later use.
 randomKey :: IO (S.ByteString, Key)
 randomKey = do
-    bs <- randomBytes 64
+    bs <- randomBytes 96
     case initKey bs of
         Left e -> error $ "Web.ClientSession.randomKey: never here, " ++ e
         Right key -> return (bs, key)
 
--- | Initializes a 'Key' from a random 'S.ByteString'.  It's
--- better to give a 'S.ByteString' with exactly 64 bytes, but
--- anything with at least 32 bytes will work.
+-- | Initializes a 'Key' from a random 'S.ByteString'.  Fails if
+-- there isn't exactly 96 bytes (256 bits for AES and 512 bits
+-- for HMAC-SHA256).
 initKey :: S.ByteString -> Either String Key
-initKey bs | S.length bs < 32 = Left $ "Web.ClientSession.initKey: length of " ++
-                                       show (S.length bs) ++ " too small."
+initKey bs | S.length bs /= 96 = Left $ "Web.ClientSession.initKey: length of " ++
+                                         show (S.length bs) ++ " /= 96."
 initKey bs = case buildKey preAesKey of
                Nothing -> Left $ "Web.ClientSession.initKey: unknown error with buildKey."
-               Just k  -> Right (mk k)
+               Just k  -> Right $ Key { aesKey  = k
+                                      , hmacKey = MacKey preMacKey }
     where
-      preAesKey | S.length bs >= 64 = S.pack $ uncurry (S.zipWith xor) $ S.splitAt 32 bs
-                | otherwise         = S.take 32 bs
-      mk k = Key { aesKey  = k
-                 , hmacKey = MacKey bs }
-                 -- It's okay to have a MacKey where bs doesn't
-                 -- have exactly 512 bits, the size of the block
-                 -- used in SHA-256.  hmac' already deals with it.
+      (preMacKey, preAesKey) = S.splitAt 64 bs
 
 -- | Same as 'encrypt', however randomly generates the
 -- initialization vector for you.
