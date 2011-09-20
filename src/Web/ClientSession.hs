@@ -52,17 +52,30 @@ module Web.ClientSession
     , decrypt
     ) where
 
+-- from base
 import Control.Arrow (second)
 import Control.Monad (guard)
 import Data.Bits (xor)
+
+-- from directory
 import System.Directory (doesFileExist)
+
+-- from bytestring
 import qualified Data.ByteString as S
-import qualified Crypto.Cipher.AES as A
-import Crypto.Hash.SHA256 (SHA256)
-import Crypto.HMAC (MacKey(..), hmac')
 import qualified Data.ByteString.Base64 as B
-import Crypto.Random (newGenIO, genBytes, SystemRandom)
+
+-- from cereal
 import Data.Serialize (encode)
+
+-- from crypto-api
+import Crypto.HMAC (MacKey(..), hmac')
+import Crypto.Random (newGenIO, genBytes, SystemRandom)
+
+-- from cryptocipher
+import qualified Crypto.Cipher.AES as A
+
+-- from cryptohash
+import Crypto.Hash.SHA256 (SHA256)
 
 -- | The keys used to store the cookies.  We have an AES key used
 -- to encrypt the cookie and a HMAC-SHA256 key used verify the
