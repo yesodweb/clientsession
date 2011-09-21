@@ -91,6 +91,10 @@ data Key = Key { aesKey :: A.AES256
                  -- for calculating the MAC (see 'skeinMAC'').
                }
 
+-- | Dummy 'Show' instance.
+instance Show Key where
+    show _ = "<Web.ClientSession.Key>"
+
 -- | The initialization vector used by AES.  Should be exactly 16
 -- bytes long.
 type IV = Modes.IV A.AES256
