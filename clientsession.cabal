@@ -1,8 +1,8 @@
 name:            clientsession
-version:         0.7.2
+version:         0.7.3
 license:         BSD3
 license-file:    LICENSE
-author:          Michael Snoyman <michael@snoyman.com>
+author:          Michael Snoyman <michael@snoyman.com>, Felipe Lessa <felipe.lessa@gmail.com>
 maintainer:      Michael Snoyman <michael@snoyman.com>
 synopsis:        Securely store session data in a client-side cookie.
 description:     Achieves security through AES-CTR encryption and
