@@ -1,12 +1,12 @@
 name:            clientsession
-version:         0.7.2
+version:         0.7.3
 license:         BSD3
 license-file:    LICENSE
-author:          Michael Snoyman <michael@snoyman.com>
+author:          Michael Snoyman <michael@snoyman.com>, Felipe Lessa <felipe.lessa@gmail.com>
 maintainer:      Michael Snoyman <michael@snoyman.com>
-synopsis:        Store session data in a cookie.
-description:     Achieves security through AES-CBC encryption and
-                 HMAC-SHA256 authentication.  Uses Base64
+synopsis:        Securely store session data in a client-side cookie.
+description:     Achieves security through AES-CTR encryption and
+                 Skein-MAC-512-256 authentication.  Uses Base64
                  encoding to avoid any issues with characters.
 category:        Web
 stability:       stable
@@ -25,7 +25,7 @@ library
                    , directory           >= 1          && < 1.2
                    , crypto-api          >= 0.6.4      && < 0.7
                    , cryptocipher        >= 0.2.5      && < 0.3
-                   , cryptohash          >= 0.7.1      && < 0.8
+                   , skein               >= 0.1        && < 0.2
                    , base64-bytestring   >= 0.1.0.3    && < 0.2
     exposed-modules: Web.ClientSession
     ghc-options:     -Wall

@@ -36,11 +36,11 @@ propEncDecFailure bs = unsafePerformIO $ do
     let bs' = decrypt key $ (S.head s + 1) `S.cons` S.drop 1 s
     return $ Just bs /= bs'
 
-propAES :: Key -> IV -> S.ByteString -> Bool
-propAES key iv bs = decrypt key (encrypt key iv bs) == Just bs
+propAES :: MyKey -> MyIV -> S.ByteString -> Bool
+propAES (MyKey key) (MyIV iv) bs = decrypt key (encrypt key iv bs) == Just bs
 
-propAESChanges :: Key -> IV -> S.ByteString -> Bool
-propAESChanges key iv bs = encrypt key iv bs /= bs
+propAESChanges :: MyKey -> MyIV -> S.ByteString -> Bool
+propAESChanges (MyKey key) (MyIV iv) bs = encrypt key iv bs /= bs
 
 caseSpecific :: Assertion
 caseSpecific = do
@@ -54,13 +54,22 @@ caseSpecific = do
 instance Arbitrary S.ByteString where
     arbitrary = S.pack `fmap` arbitrary
 
-instance Arbitrary Key where
-    arbitrary = do
-        keySize <- ((+32) . (`mod` 64)) `fmap` arbitrary
-        ws <- replicateM keySize arbitrary
-        either error return $ initKey $ S.pack ws
+newtype MyKey = MyKey Key
 
-instance Arbitrary IV where
+instance Arbitrary MyKey where
+    arbitrary = do
+        ws <- replicateM 96 arbitrary
+        either error (return . MyKey) $ initKey $ S.pack ws
+
+instance Show MyKey where
+    show _ = "<Key>"
+
+newtype MyIV = MyIV IV
+
+instance Arbitrary MyIV where
     arbitrary = do
         ws <- replicateM 16 arbitrary
-        maybe (error "Invalid IV") return $ mkIV $ S.pack ws
+        maybe (error "Invalid IV") (return . MyIV) $ mkIV $ S.pack ws
+
+instance Show MyIV where
+    show _ = "<Iv>"
