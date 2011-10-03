@@ -14,6 +14,7 @@ cabal-version:   >= 1.8
 build-type:      Simple
 homepage:        http://github.com/snoyberg/clientsession/tree/master
 data-files:      bench.hs
+extra-source-files: tests/runtests.hs
 
 flag test
   description: Build the executable to run unit tests
