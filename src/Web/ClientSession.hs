@@ -54,6 +54,8 @@ module Web.ClientSession
 
 -- from base
 import Control.Monad (guard)
+import Data.Bits ((.|.), xor)
+import Data.List (foldl')
 
 -- from directory
 import System.Directory (doesFileExist)
@@ -199,8 +201,15 @@ decrypt key dataBS64 = do
     guard (S.length dataBS >= 48) -- 16 bytes of IV + 32 bytes of Skein-MAC-512-256
     let (auth, toBeAuthed) = S.splitAt 32 dataBS
         auth' = macKey key toBeAuthed
-    guard (encode auth' == auth)
+    guard (encode auth' `compareHash` auth)
     let (iv_e, encrypted) = S.splitAt 16 toBeAuthed
     iv <- either (const Nothing) Just $ decode iv_e
     let (x, _) = Modes.unCtr' Modes.incIV (aesKey key) iv encrypted
     return x
+
+-- | Compare two bytestrings.  Always takes the same ammount of
+-- time, avoiding timing attacks.
+compareHash :: S.ByteString -> S.ByteString -> Bool
+compareHash s1 s2 =
+    S.length s1 == S.length s2 &&
+    foldl' (.|.) 0 (S.zipWith xor s1 s2) == 0
