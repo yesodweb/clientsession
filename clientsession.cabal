@@ -13,6 +13,7 @@ stability:       stable
 cabal-version:   >= 1.8
 build-type:      Simple
 homepage:        http://github.com/snoyberg/clientsession/tree/master
+data-files:      bench.hs
 
 flag test
   description: Build the executable to run unit tests
