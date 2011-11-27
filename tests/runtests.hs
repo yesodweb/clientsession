@@ -14,6 +14,11 @@ import qualified Data.ByteString.Char8 as S8
 import Web.ClientSession
 import System.IO.Unsafe
 
+import qualified Data.Set as Set
+import Control.Monad.Trans.State.Strict (evalStateT, get, put)
+import Control.Monad.Trans.Class (lift)
+import Control.Monad (replicateM_)
+
 main :: IO ()
 main = hspecX $ describe "client session" $ do
     it "encrypt/decrypt success" $ property propEncDec
@@ -21,6 +26,7 @@ main = hspecX $ describe "client session" $ do
     it "AES encrypt/decrypt success" $ property propAES
     it "AES encryption changes bs" $ property propAESChanges
     it "specific values" caseSpecific
+    it "randomIV is really random" caseRandomIV
 
 propEncDec :: S.ByteString -> Bool
 propEncDec bs = unsafePerformIO $ do
@@ -50,6 +56,16 @@ caseSpecific = do
     Just s @=? decrypt key (encrypt key iv s)
     let s' = S.concat $ replicate 500 s
     Just s' @=? decrypt key (encrypt key iv s')
+
+caseRandomIV :: Assertion
+caseRandomIV = do
+    evalStateT (replicateM_ 10000 go) Set.empty
+  where
+    go = do
+        val <- lift randomIV
+        set <- get
+        lift $ assertBool "No duplicated keys" (not $ val `Set.member` set)
+        put $ Set.insert val set
 
 instance Arbitrary S.ByteString where
     arbitrary = S.pack `fmap` arbitrary

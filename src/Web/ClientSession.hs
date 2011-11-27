@@ -53,9 +53,13 @@ module Web.ClientSession
     ) where
 
 -- from base
-import Control.Monad (guard)
+import Control.Monad (guard, when)
 import Data.Bits ((.|.), xor)
 import Data.List (foldl')
+import qualified Data.IORef as I
+import System.IO.Unsafe (unsafePerformIO)
+import Control.Concurrent (forkIO)
+import Control.Applicative ((<$>))
 
 -- from directory
 import System.Directory (doesFileExist)
@@ -68,7 +72,7 @@ import qualified Data.ByteString.Base64 as B
 import Data.Serialize (encode, decode)
 
 -- from crypto-api
-import Crypto.Classes (buildKey)
+import Crypto.Classes (buildKey, encryptBlock)
 import Crypto.Random (newGenIO, genBytes, SystemRandom)
 import qualified Crypto.Modes as Modes
 
@@ -77,6 +81,9 @@ import qualified Crypto.Cipher.AES as A
 
 -- from skein
 import Crypto.Skein (skeinMAC', Skein_512_256)
+
+-- from entropy
+import System.Entropy (getEntropy)
 
 -- | The keys used to store the cookies.  We have an AES key used
 -- to encrypt the cookie and a Skein-MAC-512-256 key used verify
@@ -111,7 +118,7 @@ mkIV bs = case (S.length bs, decode bs) of
 -- | Randomly construct a fresh initialization vector.  You
 -- /should not/ reuse initialization vectors.
 randomIV :: IO IV
-randomIV = Modes.getIVIO
+randomIV = aesRNG
 
 -- | The default key file.
 defaultKeyFile :: FilePath
@@ -213,3 +220,32 @@ compareHash :: S.ByteString -> S.ByteString -> Bool
 compareHash s1 s2 =
     S.length s1 == S.length s2 &&
     foldl' (.|.) 0 (S.zipWith xor s1 s2) == 0
+
+-- Significantly more efficien random IV generation. Initial benchmarks placed
+-- it at 7.144764 us versus 1.686288 ms for Modes.getIVIO, since it does not
+-- require /dev/urandom I/O for every call.
+
+data AESState = ASt {-# UNPACK #-} !A.AES256
+                    {-# UNPACK #-} !(Modes.IV A.AES256)
+
+aesSeed :: IO AESState
+aesSeed = do
+  Just key <- buildKey <$> getEntropy 32
+  return $! ASt key Modes.zeroIV
+
+aesRef :: I.IORef AESState
+aesRef = unsafePerformIO $ aesSeed >>= I.newIORef
+
+aesRNG :: IO IV
+aesRNG = do
+  ASt key count <-
+      I.atomicModifyIORef aesRef $ \t@(ASt key' count') ->
+          (ASt key' (Modes.incIV count'), t)
+  when (count == threshold) $ void $ forkIO $ aesSeed >>= I.writeIORef aesRef
+  let nextiv = encryptBlock key $ encode count
+  either (error . show) return $ decode nextiv
+ where
+  void f = f >> return ()
+
+threshold :: Modes.IV A.AES256
+threshold = iterate Modes.incIV Modes.zeroIV !! 1000
