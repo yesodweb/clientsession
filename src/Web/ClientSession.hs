@@ -59,7 +59,6 @@ import Data.List (foldl')
 import qualified Data.IORef as I
 import System.IO.Unsafe (unsafePerformIO)
 import Control.Concurrent (forkIO)
-import Control.Applicative ((<$>))
 
 -- from directory
 import System.Directory (doesFileExist)
@@ -72,8 +71,8 @@ import qualified Data.ByteString.Base64 as B
 import Data.Serialize (encode, decode)
 
 -- from crypto-api
-import Crypto.Classes (buildKey, encryptBlock)
-import Crypto.Random (newGenIO, genBytes, SystemRandom)
+import Crypto.Classes (buildKey)
+import Crypto.Random (newGenIO, genBytes, reseed, SystemRandom)
 import qualified Crypto.Modes as Modes
 
 -- from cryptocipher
@@ -84,6 +83,9 @@ import Crypto.Skein (skeinMAC', Skein_512_256)
 
 -- from entropy
 import System.Entropy (getEntropy)
+
+-- from cprng-aes
+import Crypto.Random.AESCtr (AESRNG, makeSystem, genRandomBytes)
 
 -- | The keys used to store the cookies.  We have an AES key used
 -- to encrypt the cookie and a Skein-MAC-512-256 key used verify
@@ -221,31 +223,63 @@ compareHash s1 s2 =
     S.length s1 == S.length s2 &&
     foldl' (.|.) 0 (S.zipWith xor s1 s2) == 0
 
--- Significantly more efficien random IV generation. Initial benchmarks placed
--- it at 7.144764 us versus 1.686288 ms for Modes.getIVIO, since it does not
--- require /dev/urandom I/O for every call.
+-- Significantly more efficient random IV generation. Initial
+-- benchmarks placed it at 6.06 us versus 1.69 ms for Modes.getIVIO,
+-- since it does not require /dev/urandom I/O for every call.
 
-data AESState = ASt {-# UNPACK #-} !A.AES256
-                    {-# UNPACK #-} !(Modes.IV A.AES256)
+data AESState =
+    ASt {-# UNPACK #-} !AESRNG -- Our CPRNG using AES on CTR mode
+        {-# UNPACK #-} !Int    -- How many IVs were generated with this
+                               -- AESRNG.  Used to control reseeding.
 
+-- | Construct initial state of the CPRNG.
 aesSeed :: IO AESState
 aesSeed = do
-  Just key <- buildKey <$> getEntropy 32
-  return $! ASt key Modes.zeroIV
+  rng <- makeSystem
+  return $! ASt rng 0
 
+-- | Reseed the CPRNG with new entropy from the system pool.
+aesReseed :: IO ()
+aesReseed = do
+  ent <- getEntropy 64 -- XXX: Is it possible for getEntropy
+                       --      to return less entropy than
+                       --      than we asked it?  I assume "no",
+                       --      but there's a check here just
+                       --      in case.
+  if S.length ent < 64
+    then I.atomicModifyIORef aesRef $
+             -- Use the old RNG, but force a reseed
+             -- after another 'threshold' uses of it.
+             \(ASt rng _) -> (ASt rng 0, ())
+    else I.atomicModifyIORef aesRef $
+             \(ASt rng _) ->
+                 let Right rng' = reseed ent rng
+                 in (ASt rng' 0, ())
+
+-- | 'IORef' that keeps the current state of the CPRNG.  Yep,
+-- global state.  Used in thread-safe was only, though.
 aesRef :: I.IORef AESState
 aesRef = unsafePerformIO $ aesSeed >>= I.newIORef
+{-# NOINLINE aesRef #-}
 
+-- | Construct a new 16-byte IV using our CPRNG.  Forks another
+-- thread to reseed the CPRNG should its usage count reach a
+-- hardcoded threshold.
 aesRNG :: IO IV
 aesRNG = do
-  ASt key count <-
-      I.atomicModifyIORef aesRef $ \t@(ASt key' count') ->
-          (ASt key' (Modes.incIV count'), t)
-  when (count == threshold) $ void $ forkIO $ aesSeed >>= I.writeIORef aesRef
-  let nextiv = encryptBlock key $ encode count
-  either (error . show) return $ decode nextiv
+  (bs, count) <-
+      I.atomicModifyIORef aesRef $ \(ASt rng count) ->
+          let (bs', rng') = genRandomBytes rng 16
+          in (ASt rng' (succ count), (bs', count))
+  when (count == threshold) $ void $ forkIO aesReseed
+  either (error . show) return $ decode bs
  where
   void f = f >> return ()
 
-threshold :: Modes.IV A.AES256
-threshold = iterate Modes.incIV Modes.zeroIV !! 1000
+-- | How many IVs should be generated before reseeding the CPRNG.
+-- This number depends basically on how paranoid you are.  We
+-- think 100.000 is a good compromise: larger numbers give only a
+-- small performance advantage, while it still is a small number
+-- since we only generate 1.5 MiB of random data between reseeds.
+threshold :: Int
+threshold = 100000
