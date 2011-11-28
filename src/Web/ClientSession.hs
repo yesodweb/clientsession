@@ -70,9 +70,13 @@ import qualified Data.ByteString.Base64 as B
 -- from cereal
 import Data.Serialize (encode, decode)
 
+-- from tagged
+import Data.Tagged (Tagged, untag)
+
 -- from crypto-api
 import Crypto.Classes (buildKey)
-import Crypto.Random (reseed)
+import Crypto.Random (genSeedLength, reseed)
+import Crypto.Types (ByteLength)
 import qualified Crypto.Modes as Modes
 
 -- from cryptocipher
@@ -235,20 +239,18 @@ aesSeed = do
 -- | Reseed the CPRNG with new entropy from the system pool.
 aesReseed :: IO ()
 aesReseed = do
-  ent <- getEntropy 64 -- XXX: Is it possible for getEntropy
-                       --      to return less entropy than
-                       --      than we asked it?  I assume "no",
-                       --      but there's a check here just
-                       --      in case.
-  if S.length ent < 64
-    then I.atomicModifyIORef aesRef $
+  let len :: Tagged AESRNG ByteLength
+      len = genSeedLength
+  ent <- getEntropy (untag len)
+  I.atomicModifyIORef aesRef $
+       \(ASt rng _) ->
+           case reseed ent rng of
+             Right rng' -> (ASt rng' 0, ())
+             Left  _    -> (ASt rng  0, ())
              -- Use the old RNG, but force a reseed
              -- after another 'threshold' uses of it.
-             \(ASt rng _) -> (ASt rng 0, ())
-    else I.atomicModifyIORef aesRef $
-             \(ASt rng _) ->
-                 let Right rng' = reseed ent rng
-                 in (ASt rng' 0, ())
+             -- In theory, we will never reach this
+             -- branch, but if we do, we're safe.
 
 -- | 'IORef' that keeps the current state of the CPRNG.  Yep,
 -- global state.  Used in thread-safe was only, though.
