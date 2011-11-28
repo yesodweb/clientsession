@@ -1,5 +1,5 @@
 name:            clientsession
-version:         0.7.3.4
+version:         0.7.3.5
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michael@snoyman.com>, Felipe Lessa <felipe.lessa@gmail.com>
@@ -30,6 +30,7 @@ library
                    , skein               >= 0.1        && < 0.2
                    , base64-bytestring   >= 0.1.0.3    && < 0.2
                    , entropy             >= 0.2.1
+                   , cprng-aes           >= 0.2
     exposed-modules: Web.ClientSession
     ghc-options:     -Wall
     hs-source-dirs:  src
@@ -39,7 +40,7 @@ test-suite runtests
     build-depends:   base                >=4           && < 5
                    , bytestring          >= 0.9        && < 0.10
                    , cryptocipher        >= 0.2.5      && < 0.3
-                   , hspec               == 0.6.*
+                   , hspec               >= 0.6        && < 0.10
                    , QuickCheck          >= 2          && < 3
                    , HUnit
                    , transformers
