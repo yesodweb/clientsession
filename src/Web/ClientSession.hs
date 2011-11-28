@@ -72,7 +72,7 @@ import Data.Serialize (encode, decode)
 
 -- from crypto-api
 import Crypto.Classes (buildKey)
-import Crypto.Random (newGenIO, genBytes, reseed, SystemRandom)
+import Crypto.Random (reseed)
 import qualified Crypto.Modes as Modes
 
 -- from cryptocipher
@@ -147,18 +147,12 @@ getKey keyFile = do
         S.writeFile keyFile bs
         return key'
 
--- | Generate the given number of random bytes.
-randomBytes :: Int -> IO S.ByteString
-randomBytes len = do
-    g <- newGenIO
-    either (error . show) (return . fst) $ genBytes len (g :: SystemRandom)
-
 -- | Generate a random 'Key'.  Besides the 'Key', the
 -- 'ByteString' passed to 'initKey' is returned so that it can be
 -- saved for later use.
 randomKey :: IO (S.ByteString, Key)
 randomKey = do
-    bs <- randomBytes 96
+    bs <- getEntropy 96
     case initKey bs of
         Left e -> error $ "Web.ClientSession.randomKey: never here, " ++ e
         Right key -> return (bs, key)
