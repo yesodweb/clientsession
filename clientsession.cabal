@@ -12,7 +12,7 @@ category:        Web
 stability:       stable
 cabal-version:   >= 1.8
 build-type:      Simple
-homepage:        http://github.com/snoyberg/clientsession/tree/master
+homepage:        http://github.com/yesodweb/clientsession/tree/master
 data-files:      bench.hs
 extra-source-files: tests/runtests.hs
 
@@ -54,4 +54,4 @@ test-suite runtests
 
 source-repository head
   type:     git
-  location: git://github.com/snoyberg/clientsession.git
+  location: git://github.com/yesodweb/clientsession.git
