@@ -26,7 +26,7 @@ library
                    , cereal              >= 0.3        && < 0.4
                    , directory           >= 1          && < 1.2
                    , tagged              >= 0.1
-                   , crypto-api          >= 0.6.4      && < 0.9
+                   , crypto-api          >= 0.6.4      && < 0.10
                    , cryptocipher        >= 0.2.5
                    , skein               >= 0.1        && < 0.2
                    , base64-bytestring   >= 0.1.0.3    && < 0.2
