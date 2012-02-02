@@ -1,5 +1,5 @@
 name:            clientsession
-version:         0.7.3.6
+version:         0.7.4
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michael@snoyman.com>, Felipe Lessa <felipe.lessa@gmail.com>
@@ -12,7 +12,7 @@ category:        Web
 stability:       stable
 cabal-version:   >= 1.8
 build-type:      Simple
-homepage:        http://github.com/snoyberg/clientsession/tree/master
+homepage:        http://github.com/yesodweb/clientsession/tree/master
 data-files:      bench.hs
 extra-source-files: tests/runtests.hs
 
@@ -26,7 +26,7 @@ library
                    , cereal              >= 0.3        && < 0.4
                    , directory           >= 1          && < 1.2
                    , tagged              >= 0.1
-                   , crypto-api          >= 0.6.4      && < 0.9
+                   , crypto-api          >= 0.6.4      && < 0.10
                    , cryptocipher        >= 0.2.5
                    , skein               >= 0.1        && < 0.2
                    , base64-bytestring   >= 0.1.0.3    && < 0.2
@@ -40,7 +40,7 @@ test-suite runtests
     type: exitcode-stdio-1.0
     build-depends:   base                >=4           && < 5
                    , bytestring          >= 0.9        && < 0.10
-                   , cryptocipher        >= 0.2.5      && < 0.3
+                   , cryptocipher        >= 0.2.5
                    , hspec               >= 0.6        && < 0.10
                    , QuickCheck          >= 2          && < 3
                    , HUnit
@@ -54,4 +54,4 @@ test-suite runtests
 
 source-repository head
   type:     git
-  location: git://github.com/snoyberg/clientsession.git
+  location: git://github.com/yesodweb/clientsession.git
