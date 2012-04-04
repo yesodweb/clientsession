@@ -1,5 +1,5 @@
 name:            clientsession
-version:         0.7.4.1
+version:         0.7.4.2
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michael@snoyman.com>, Felipe Lessa <felipe.lessa@gmail.com>
@@ -29,7 +29,7 @@ library
                    , crypto-api          >= 0.6.4      && < 0.10
                    , cryptocipher        >= 0.2.5
                    , skein               >= 0.1        && < 0.2
-                   , base64-bytestring   >= 0.1.0.3    && < 0.1.1.0
+                   , base64-bytestring   >= 0.1.1.1    && < 0.2
                    , entropy             >= 0.2.1
                    , cprng-aes           >= 0.2
     exposed-modules: Web.ClientSession
