@@ -54,8 +54,6 @@ module Web.ClientSession
 
 -- from base
 import Control.Monad (guard, when)
-import Data.Bits ((.|.), xor)
-import Data.List (foldl')
 import qualified Data.IORef as I
 import System.IO.Unsafe (unsafePerformIO)
 import Control.Concurrent (forkIO)
@@ -74,7 +72,7 @@ import Data.Serialize (encode, decode)
 import Data.Tagged (Tagged, untag)
 
 -- from crypto-api
-import Crypto.Classes (buildKey)
+import Crypto.Classes (buildKey, constTimeEq)
 import Crypto.Random (genSeedLength, reseed)
 import Crypto.Types (ByteLength)
 import qualified Crypto.Modes as Modes
@@ -208,18 +206,11 @@ decrypt key dataBS64 = do
     guard (S.length dataBS >= 48) -- 16 bytes of IV + 32 bytes of Skein-MAC-512-256
     let (auth, toBeAuthed) = S.splitAt 32 dataBS
         auth' = macKey key toBeAuthed
-    guard (encode auth' `compareHash` auth)
+    guard (encode auth' `constTimeEq` auth)
     let (iv_e, encrypted) = S.splitAt 16 toBeAuthed
     iv <- either (const Nothing) Just $ decode iv_e
     let (x, _) = Modes.unCtr' Modes.incIV (aesKey key) iv encrypted
     return x
-
--- | Compare two bytestrings.  Always takes the same ammount of
--- time, avoiding timing attacks.
-compareHash :: S.ByteString -> S.ByteString -> Bool
-compareHash s1 s2 =
-    S.length s1 == S.length s2 &&
-    foldl' (.|.) 0 (S.zipWith xor s1 s2) == 0
 
 -- Significantly more efficient random IV generation. Initial
 -- benchmarks placed it at 6.06 us versus 1.69 ms for Modes.getIVIO,
