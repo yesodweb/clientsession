@@ -46,6 +46,7 @@ module Web.ClientSession
     , defaultKeyFile
     , getDefaultKey
     , initKey
+    , randomKey
       -- * Actual encryption/decryption
     , encrypt
     , encryptIO
