@@ -19,14 +19,17 @@ import Control.Monad.Trans.State.Strict (evalStateT, get, put)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad (replicateM_)
 
+import Data.Serialize (encode, decode)
+
 main :: IO ()
-main = hspecX $ describe "client session" $ do
+main = hspec $ describe "client session" $ do
     it "encrypt/decrypt success" $ property propEncDec
     it "encrypt/decrypt failure" $ property propEncDecFailure
     it "AES encrypt/decrypt success" $ property propAES
     it "AES encryption changes bs" $ property propAESChanges
     it "specific values" caseSpecific
     it "randomIV is really random" caseRandomIV
+    it "serialize instance" $ property propSerialize
 
 propEncDec :: S.ByteString -> Bool
 propEncDec bs = unsafePerformIO $ do
@@ -67,6 +70,9 @@ caseRandomIV = do
         lift $ assertBool "No duplicated keys" (not $ val `Set.member` set)
         put $ Set.insert val set
 
+propSerialize :: MyKey -> Bool
+propSerialize (MyKey key) = Right key == decode (encode key)
+
 instance Arbitrary S.ByteString where
     arbitrary = S.pack `fmap` arbitrary
 
@@ -78,7 +84,7 @@ instance Arbitrary MyKey where
         either error (return . MyKey) $ initKey $ S.pack ws
 
 instance Show MyKey where
-    show _ = "<Key>"
+    show (MyKey key) = "MyKey:" ++ show (encode key)
 
 newtype MyIV = MyIV IV
 

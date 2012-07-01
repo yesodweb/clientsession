@@ -38,7 +38,7 @@
 ---------------------------------------------------------
 module Web.ClientSession
     ( -- * Automatic key generation
-      Key(..)
+      Key
     , IV
     , randomIV
     , mkIV
@@ -58,6 +58,7 @@ import Control.Monad (guard, when)
 import qualified Data.IORef as I
 import System.IO.Unsafe (unsafePerformIO)
 import Control.Concurrent (forkIO)
+import Control.Applicative ((<$>))
 
 -- from directory
 import System.Directory (doesFileExist)
@@ -67,7 +68,7 @@ import qualified Data.ByteString as S
 import qualified Data.ByteString.Base64 as B
 
 -- from cereal
-import Data.Serialize (encode, decode)
+import Data.Serialize (encode, decode, Serialize (put, get), getBytes, putByteString)
 
 -- from tagged
 import Data.Tagged (Tagged, untag)
@@ -103,7 +104,15 @@ data Key = Key { aesKey :: A.AES256
                  -- ^ Skein-MAC key.  Instead of storing the key
                  -- data, we store a partially applied function
                  -- for calculating the MAC (see 'skeinMAC'').
+               , keyRaw :: S.ByteString
                }
+
+instance Eq Key where
+    Key a _ b == Key x _ y = encode a == encode x && b == y
+
+instance Serialize Key where
+    put = putByteString . keyRaw
+    get = either error id . initKey <$> getBytes 96
 
 -- | Dummy 'Show' instance.
 instance Show Key where
@@ -169,7 +178,9 @@ initKey bs | S.length bs /= 96 = Left $ "Web.ClientSession.initKey: length of " 
 initKey bs = case buildKey preAesKey of
                Nothing -> Left $ "Web.ClientSession.initKey: unknown error with buildKey."
                Just k  -> Right $ Key { aesKey = k
-                                      , macKey = skeinMAC' preMacKey }
+                                      , macKey = skeinMAC' preMacKey
+                                      , keyRaw = bs
+                                      }
     where
       (preMacKey, preAesKey) = S.splitAt 64 bs
 
