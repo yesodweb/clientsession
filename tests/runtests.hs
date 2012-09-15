@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
-import Test.HUnit
+import Test.HUnit (assertBool)
 import Test.Hspec
 import Test.QuickCheck
 import Control.Monad (replicateM)
@@ -49,16 +49,16 @@ propAES (MyKey key) (MyIV iv) bs = decrypt key (encrypt key iv bs) == Just bs
 propAESChanges :: MyKey -> MyIV -> S.ByteString -> Bool
 propAESChanges (MyKey key) (MyIV iv) bs = encrypt key iv bs /= bs
 
-caseSpecific :: Assertion
+caseSpecific :: Expectation
 caseSpecific = do
     let s = S8.pack $ show [("lo\ENQ\143XAq","\DC2\207\226\DC1;.z56|\203\222"),("\USnu#\139\ETXB\201 ","l"),("\RS\b,zM2U\184\191F)\EOT\220S\NUL","O\\\GSd\247\246\n\EOT\SYN\182U2G"),("\219\NAK\217\CAN\252","ym\STX\188\232?\\\145"),("\239k","\vRZP\a\DC2F>"),("\FS\180P &\RS\174zSL\\?@","p\170\237vZ|\GS>\SYNk\176n\r"),("","\199D\DC3\200m)"),("6\152tVhB\246)9","\ENQdfU\SUB"),("I\ACK\181\NUL","\129\&6s\130q\US)oR1\197\FSp\US\SYN0"),("\183\200<\250","\211  \131g4\207N\155"),("\248O6k\CANK\135\234.","`\205!+&Z&9\DLE\244\214HP\SI\161"),("\"I'\ACK\149 \CAN\197","\141N\201\SO\204\\o.\128\148")]
     key <- getDefaultKey
     iv <- randomIV
-    Just s @=? decrypt key (encrypt key iv s)
+    decrypt key (encrypt key iv s) `shouldBe` Just s
     let s' = S.concat $ replicate 500 s
-    Just s' @=? decrypt key (encrypt key iv s')
+    decrypt key (encrypt key iv s') `shouldBe` Just s'
 
-caseRandomIV :: Assertion
+caseRandomIV :: Expectation
 caseRandomIV = do
     evalStateT (replicateM_ 10000 go) Set.empty
   where
