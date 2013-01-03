@@ -1,5 +1,5 @@
 name:            clientsession
-version:         0.8.0.1
+version:         0.8.0.2
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michael@snoyman.com>, Felipe Lessa <felipe.lessa@gmail.com>
@@ -31,7 +31,7 @@ library
                    , skein               >= 0.1        && < 0.2
                    , base64-bytestring   >= 0.1.1.1
                    , entropy             >= 0.2.1
-                   , cprng-aes           >= 0.2
+                   , cprng-aes           >= 0.3.2 && < 0.4
     exposed-modules: Web.ClientSession
     ghc-options:     -Wall
     hs-source-dirs:  src
@@ -56,3 +56,8 @@ test-suite runtests
 source-repository head
   type:     git
   location: git://github.com/yesodweb/clientsession.git
+
+
+
+
+

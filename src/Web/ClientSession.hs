@@ -268,7 +268,7 @@ aesRNG :: IO IV
 aesRNG = do
   (bs, count) <-
       I.atomicModifyIORef aesRef $ \(ASt rng count) ->
-          let (bs', rng') = genRandomBytes rng 16
+          let (bs', rng') = genRandomBytes 16 rng
           in (ASt rng' (succ count), (bs', count))
   when (count == threshold) $ void $ forkIO aesReseed
   either (error . show) return $ decode bs
