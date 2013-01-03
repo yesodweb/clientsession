@@ -1,2 +1,4 @@
 *.swp
 dist
+cabal-dev
+client_session_key.aes
