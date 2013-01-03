@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE CPP #-}
 ---------------------------------------------------------
 --
 -- |
@@ -268,7 +269,11 @@ aesRNG :: IO IV
 aesRNG = do
   (bs, count) <-
       I.atomicModifyIORef aesRef $ \(ASt rng count) ->
+#if MIN_VERSION_cprng_aes(0, 3, 2)
+          let (bs', rng') = genRandomBytes 16 rng
+#else
           let (bs', rng') = genRandomBytes rng 16
+#endif
           in (ASt rng' (succ count), (bs', count))
   when (count == threshold) $ void $ forkIO aesReseed
   either (error . show) return $ decode bs
