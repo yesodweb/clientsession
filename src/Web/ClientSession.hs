@@ -92,6 +92,36 @@ import System.Entropy (getEntropy)
 -- from cprng-aes
 import Crypto.Random.AESCtr (AESRNG, makeSystem, genRandomBytes)
 
+#if MIN_VERSION_cryptocipher(0, 4, 0)
+
+import Crypto.Classes (BlockCipher(..))
+import Data.Tagged (Tagged(..))
+
+newtype AES256 = A256 { unA256 :: A.Key }
+
+instance BlockCipher AES256 where
+    blockSize    = Tagged 128
+    encryptBlock = A.encryptECB . unA256
+    decryptBlock = A.decryptECB . unA256
+    buildKey     = Just . A256 . A.initKey
+    keyLength    = Tagged 256
+
+instance Serialize AES256 where
+    put = error "put AES256"
+    get = error "get AES256"
+    {-
+    put = putByteString . serializeKey . keyToBS . unA256
+    get = do
+        raw <- getByteString (256 `div` 8)
+        case buildKey raw of
+            Nothing -> fail "Invalid raw key material."
+            Just k  -> return k
+            -}
+
+#else
+type AES256 = A.AES256
+#endif
+
 -- | The keys used to store the cookies.  We have an AES key used
 -- to encrypt the cookie and a Skein-MAC-512-256 key used verify
 -- the authencity and integrity of the cookie.  The AES key needs
@@ -99,7 +129,7 @@ import Crypto.Random.AESCtr (AESRNG, makeSystem, genRandomBytes)
 -- should have 64 bytes (512 bits).
 --
 -- See also 'getDefaultKey' and 'initKey'.
-data Key = Key { aesKey :: A.AES256
+data Key = Key { aesKey :: AES256
                  -- ^ AES key with 32 bytes.
                , macKey :: S.ByteString -> Skein_512_256
                  -- ^ Skein-MAC key.  Instead of storing the key
@@ -121,7 +151,7 @@ instance Show Key where
 
 -- | The initialization vector used by AES.  Should be exactly 16
 -- bytes long.
-type IV = Modes.IV A.AES256
+type IV = Modes.IV AES256
 
 -- | Construct an initialization vector from a 'S.ByteString'.
 -- Fails if there isn't exactly 16 bytes.
