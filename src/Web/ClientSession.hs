@@ -55,11 +55,12 @@ module Web.ClientSession
     ) where
 
 -- from base
-import Control.Monad (guard, when)
-import qualified Data.IORef as I
-import System.IO.Unsafe (unsafePerformIO)
-import Control.Concurrent (forkIO)
 import Control.Applicative ((<$>))
+import Control.Concurrent (forkIO)
+import Control.Monad (guard, when)
+import Data.Function (on)
+import System.IO.Unsafe (unsafePerformIO)
+import qualified Data.IORef as I
 
 -- from directory
 import System.Directory (doesFileExist)
@@ -69,16 +70,15 @@ import qualified Data.ByteString as S
 import qualified Data.ByteString.Base64 as B
 
 -- from cereal
-import Data.Serialize (encode, decode, Serialize (put, get), getBytes, putByteString)
+import Data.Serialize (encode, Serialize (put, get), getBytes, putByteString)
 
 -- from tagged
 import Data.Tagged (Tagged, untag)
 
 -- from crypto-api
-import Crypto.Classes (buildKey, constTimeEq)
+import Crypto.Classes (constTimeEq)
 import Crypto.Random (genSeedLength, reseed)
 import Crypto.Types (ByteLength)
-import qualified Crypto.Modes as Modes
 
 -- from cipher-aes
 import qualified Crypto.Cipher.AES as A
@@ -92,23 +92,6 @@ import System.Entropy (getEntropy)
 -- from cprng-aes
 import Crypto.Random.AESCtr (AESRNG, makeSystem, genRandomBytes)
 
-import Crypto.Classes (BlockCipher(..))
-import Data.Tagged (Tagged(..))
-
-newtype AES256 = A256 { unA256 :: A.Key }
-
-instance BlockCipher AES256 where
-    blockSize    = Tagged 128
-    encryptBlock = A.encryptECB . unA256
-    decryptBlock = A.decryptECB . unA256
-    buildKey     = Just . A256 . A.initKey
-    keyLength    = Tagged 256
-
-instance Serialize AES256 where
-    put = putByteString . A.keyOfCtx . unA256
-    get = do
-        raw <- getBytes (256 `div` 8)
-        return $ A256 $ A.initKey raw
 
 -- | The keys used to store the cookies.  We have an AES key used
 -- to encrypt the cookie and a Skein-MAC-512-256 key used verify
@@ -117,17 +100,17 @@ instance Serialize AES256 where
 -- should have 64 bytes (512 bits).
 --
 -- See also 'getDefaultKey' and 'initKey'.
-data Key = Key { aesKey :: AES256
+data Key = Key { aesKey :: !A.Key
                  -- ^ AES key with 32 bytes.
-               , macKey :: S.ByteString -> Skein_512_256
+               , macKey :: !(S.ByteString -> Skein_512_256)
                  -- ^ Skein-MAC key.  Instead of storing the key
                  -- data, we store a partially applied function
                  -- for calculating the MAC (see 'skeinMAC'').
-               , keyRaw :: S.ByteString
+               , keyRaw :: !S.ByteString
                }
 
 instance Eq Key where
-    Key a _ b == Key x _ y = encode a == encode x && b == y
+    Key _ _ r1 == Key _ _ r2 = r1 == r2
 
 instance Serialize Key where
     put = putByteString . keyRaw
@@ -139,14 +122,37 @@ instance Show Key where
 
 -- | The initialization vector used by AES.  Should be exactly 16
 -- bytes long.
-type IV = Modes.IV AES256
+newtype IV = IV A.IV
+
+unsafeMkIV :: S.ByteString -> IV
+unsafeMkIV bs = (IV (A.IV bs))
+
+unIV :: IV -> S.ByteString
+unIV (IV (A.IV bs)) = bs
+
+instance Eq IV where
+  (==) = (==) `on` unIV
+  (/=) = (/=) `on` unIV
+
+instance Ord IV where
+  compare = compare `on` unIV
+  (<=) = (<=) `on` unIV
+  (<)  = (<)  `on` unIV
+  (>=) = (>=) `on` unIV
+  (>)  = (>)  `on` unIV
+
+instance Show IV where
+  show = show . unIV
+
+instance Serialize IV where
+  put = put . unIV
+  get = unsafeMkIV <$> get
 
 -- | Construct an initialization vector from a 'S.ByteString'.
 -- Fails if there isn't exactly 16 bytes.
 mkIV :: S.ByteString -> Maybe IV
-mkIV bs = case (S.length bs, decode bs) of
-            (16, Right iv) -> Just iv
-            _              -> Nothing
+mkIV bs | S.length bs == 16 = Just (unsafeMkIV bs)
+        | otherwise         = Nothing
 
 -- | Randomly construct a fresh initialization vector.  You
 -- /should not/ reuse initialization vectors.
@@ -194,12 +200,10 @@ randomKey = do
 initKey :: S.ByteString -> Either String Key
 initKey bs | S.length bs /= 96 = Left $ "Web.ClientSession.initKey: length of " ++
                                          show (S.length bs) ++ " /= 96."
-initKey bs = case buildKey preAesKey of
-               Nothing -> Left $ "Web.ClientSession.initKey: unknown error with buildKey."
-               Just k  -> Right $ Key { aesKey = k
-                                      , macKey = skeinMAC' preMacKey
-                                      , keyRaw = bs
-                                      }
+initKey bs = Right $ Key { aesKey = A.initKey preAesKey
+                         , macKey = skeinMAC' preMacKey
+                         , keyRaw = bs
+                         }
     where
       (preMacKey, preAesKey) = S.splitAt 64 bs
 
@@ -218,12 +222,12 @@ encrypt :: Key          -- ^ Key of the server.
         -> S.ByteString -- ^ Serialized cookie data.
         -> S.ByteString -- ^ Encoded cookie data to be given to
                         -- the client browser.
-encrypt key iv x = B.encode final
+encrypt key (IV (A.IV iv)) x = B.encode final
   where
-    (encrypted, _) = Modes.ctr' Modes.incIV (aesKey key) iv x
-    toBeAuthed     = encode iv `S.append` encrypted
-    auth           = macKey key toBeAuthed
-    final          = encode auth `S.append` toBeAuthed
+    encrypted  = A.encryptCTR (aesKey key) (A.IV iv) x
+    toBeAuthed = iv `S.append` encrypted
+    auth       = macKey key toBeAuthed
+    final      = encode auth `S.append` toBeAuthed
 
 -- | Decode (Base64), verify the integrity and authenticity
 -- (Skein-MAC-512-256) and decrypt (AES-CTR) the given encoded
@@ -238,14 +242,14 @@ decrypt key dataBS64 = do
     let (auth, toBeAuthed) = S.splitAt 32 dataBS
         auth' = macKey key toBeAuthed
     guard (encode auth' `constTimeEq` auth)
-    let (iv_e, encrypted) = S.splitAt 16 toBeAuthed
-    iv <- either (const Nothing) Just $ decode iv_e
-    let (x, _) = Modes.unCtr' Modes.incIV (aesKey key) iv encrypted
-    return x
+    let (iv, encrypted) = S.splitAt 16 toBeAuthed
+    return $! A.decryptCTR (aesKey key) (A.IV iv) encrypted
+
 
 -- Significantly more efficient random IV generation. Initial
--- benchmarks placed it at 6.06 us versus 1.69 ms for Modes.getIVIO,
--- since it does not require /dev/urandom I/O for every call.
+-- benchmarks placed it at 6.06 us versus 1.69 ms for
+-- Crypto.Modes.getIVIO, since it does not require /dev/urandom
+-- I/O for every call.
 
 data AESState =
     ASt {-# UNPACK #-} !AESRNG -- Our CPRNG using AES on CTR mode
@@ -294,7 +298,7 @@ aesRNG = do
 #endif
           in (ASt rng' (succ count), (bs', count))
   when (count == threshold) $ void $ forkIO aesReseed
-  either (error . show) return $ decode bs
+  return $! unsafeMkIV bs
  where
   void f = f >> return ()
 
