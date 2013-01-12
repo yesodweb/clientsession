@@ -80,7 +80,7 @@ import Crypto.Random (genSeedLength, reseed)
 import Crypto.Types (ByteLength)
 import qualified Crypto.Modes as Modes
 
--- from cryptocipher
+-- from cipher-aes
 import qualified Crypto.Cipher.AES as A
 
 -- from skein
@@ -91,8 +91,6 @@ import System.Entropy (getEntropy)
 
 -- from cprng-aes
 import Crypto.Random.AESCtr (AESRNG, makeSystem, genRandomBytes)
-
-#if MIN_VERSION_cryptocipher(0, 4, 0)
 
 import Crypto.Classes (BlockCipher(..))
 import Data.Tagged (Tagged(..))
@@ -107,20 +105,10 @@ instance BlockCipher AES256 where
     keyLength    = Tagged 256
 
 instance Serialize AES256 where
-    put = error "put AES256"
-    get = error "get AES256"
-    {-
-    put = putByteString . serializeKey . keyToBS . unA256
+    put = putByteString . A.keyOfCtx . unA256
     get = do
-        raw <- getByteString (256 `div` 8)
-        case buildKey raw of
-            Nothing -> fail "Invalid raw key material."
-            Just k  -> return k
-            -}
-
-#else
-type AES256 = A.AES256
-#endif
+        raw <- getBytes (256 `div` 8)
+        return $ A256 $ A.initKey raw
 
 -- | The keys used to store the cookies.  We have an AES key used
 -- to encrypt the cookie and a Skein-MAC-512-256 key used verify
