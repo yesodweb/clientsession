@@ -284,17 +284,9 @@ aesSeed = do
 aesReseed :: IO ()
 aesReseed = do
   let len :: Tagged AESRNG ByteLength
-      len = genSeedLength
-  ent <- getEntropy (untag len)
-  I.atomicModifyIORef aesRef $
-       \(ASt rng _) ->
-           case reseed ent rng of
-             Right rng' -> (ASt rng' 0, ())
-             Left  _    -> (ASt rng  0, ())
-             -- Use the old RNG, but force a reseed
-             -- after another 'threshold' uses of it.
-             -- In theory, we will never reach this
-             -- branch, but if we do, we're safe.
+      len = error "genSeedLength"
+  rng' <- makeSystem
+  I.writeIORef aesRef $ ASt rng' 0
 
 -- | 'IORef' that keeps the current state of the CPRNG.  Yep,
 -- global state.  Used in thread-safe was only, though.
