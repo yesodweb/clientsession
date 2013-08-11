@@ -100,7 +100,12 @@ import Crypto.Random.AESCtr (AESRNG, makeSystem, genRandomBytes)
 -- should have 64 bytes (512 bits).
 --
 -- See also 'getDefaultKey' and 'initKey'.
-data Key = Key { aesKey :: !A.Key
+data Key = Key { aesKey ::
+#if MIN_VERSION_cipher_aes(0, 2, 0)
+                    !A.AES
+#else
+                    !A.Key
+#endif
                  -- ^ AES key with 32 bytes.
                , macKey :: !(S.ByteString -> Skein_512_256)
                  -- ^ Skein-MAC key.  Instead of storing the key
@@ -122,13 +127,21 @@ instance Show Key where
 
 -- | The initialization vector used by AES.  Should be exactly 16
 -- bytes long.
-newtype IV = IV A.IV
+newtype IV = IV S.ByteString
 
 unsafeMkIV :: S.ByteString -> IV
+#if MIN_VERSION_cipher_aes(0, 2, 0)
+unsafeMkIV bs = (IV bs)
+#else
 unsafeMkIV bs = (IV (A.IV bs))
+#endif
 
 unIV :: IV -> S.ByteString
+#if MIN_VERSION_cipher_aes(0, 2, 0)
+unIV (IV bs) = bs
+#else
 unIV (IV (A.IV bs)) = bs
+#endif
 
 instance Eq IV where
   (==) = (==) `on` unIV
@@ -222,9 +235,9 @@ encrypt :: Key          -- ^ Key of the server.
         -> S.ByteString -- ^ Serialized cookie data.
         -> S.ByteString -- ^ Encoded cookie data to be given to
                         -- the client browser.
-encrypt key (IV (A.IV iv)) x = B.encode final
+encrypt key (IV iv) x = B.encode final
   where
-    encrypted  = A.encryptCTR (aesKey key) (A.IV iv) x
+    encrypted  = A.encryptCTR (aesKey key) iv x
     toBeAuthed = iv `S.append` encrypted
     auth       = macKey key toBeAuthed
     final      = encode auth `S.append` toBeAuthed
@@ -243,7 +256,12 @@ decrypt key dataBS64 = do
         auth' = macKey key toBeAuthed
     guard (encode auth' `constTimeEq` auth)
     let (iv, encrypted) = S.splitAt 16 toBeAuthed
-    return $! A.decryptCTR (aesKey key) (A.IV iv) encrypted
+#if MIN_VERSION_cipher_aes(0, 2, 0)
+    let iv' = iv
+#else
+    let iv' = A.IV iv
+#endif
+    return $! A.decryptCTR (aesKey key) iv' encrypted
 
 
 -- Significantly more efficient random IV generation. Initial
