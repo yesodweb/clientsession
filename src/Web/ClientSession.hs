@@ -283,8 +283,6 @@ aesSeed = do
 -- | Reseed the CPRNG with new entropy from the system pool.
 aesReseed :: IO ()
 aesReseed = do
-  let len :: Tagged AESRNG ByteLength
-      len = error "genSeedLength"
   rng' <- makeSystem
   I.writeIORef aesRef $ ASt rng' 0
 
