@@ -130,18 +130,10 @@ instance Show Key where
 newtype IV = IV S.ByteString
 
 unsafeMkIV :: S.ByteString -> IV
-#if MIN_VERSION_cipher_aes(0, 2, 0)
 unsafeMkIV bs = (IV bs)
-#else
-unsafeMkIV bs = (IV (A.IV bs))
-#endif
 
 unIV :: IV -> S.ByteString
-#if MIN_VERSION_cipher_aes(0, 2, 0)
 unIV (IV bs) = bs
-#else
-unIV (IV (A.IV bs)) = bs
-#endif
 
 instance Eq IV where
   (==) = (==) `on` unIV
@@ -237,7 +229,11 @@ encrypt :: Key          -- ^ Key of the server.
                         -- the client browser.
 encrypt key (IV iv) x = B.encode final
   where
+#if MIN_VERSION_cipher_aes(0, 2, 0)
     encrypted  = A.encryptCTR (aesKey key) iv x
+#else
+    encrypted  = A.encryptCTR (aesKey key) (A.IV iv) x
+#endif
     toBeAuthed = iv `S.append` encrypted
     auth       = macKey key toBeAuthed
     final      = encode auth `S.append` toBeAuthed
