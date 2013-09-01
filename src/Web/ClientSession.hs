@@ -2,6 +2,7 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE PackageImports #-}
 ---------------------------------------------------------
 --
 -- |
@@ -77,8 +78,6 @@ import Data.Tagged (Tagged, untag)
 
 -- from crypto-api
 import Crypto.Classes (constTimeEq)
-import Crypto.Random (genSeedLength, reseed)
-import Crypto.Types (ByteLength)
 
 -- from cipher-aes
 import qualified Crypto.Cipher.AES as A
@@ -89,8 +88,15 @@ import Crypto.Skein (skeinMAC', Skein_512_256)
 -- from entropy
 import System.Entropy (getEntropy)
 
+--from crypto-random
+import "crypto-random" Crypto.Random (cprgGenerate)
+
 -- from cprng-aes
+#if MIN_VERSION_cprng_aes(0, 5, 0)
+import Crypto.Random.AESCtr (AESRNG, makeSystem)
+#else
 import Crypto.Random.AESCtr (AESRNG, makeSystem, genRandomBytes)
+#endif
 
 
 -- | The keys used to store the cookies.  We have an AES key used
@@ -295,7 +301,9 @@ aesRNG :: IO IV
 aesRNG = do
   (bs, count) <-
       I.atomicModifyIORef aesRef $ \(ASt rng count) ->
-#if MIN_VERSION_cprng_aes(0, 3, 2)
+#if MIN_VERSION_cprng_aes(0, 5, 0)
+          let (bs', rng') = cprgGenerate 16 rng
+#elif MIN_VERSION_cprng_aes(0, 3, 2)
           let (bs', rng') = genRandomBytes 16 rng
 #else
           let (bs', rng') = genRandomBytes rng 16
