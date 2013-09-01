@@ -1,5 +1,5 @@
 name:            clientsession
-version:         0.9.0.2
+version:         0.9.0.3
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michael@snoyman.com>, Felipe Lessa <felipe.lessa@gmail.com>
@@ -32,6 +32,7 @@ library
                    , entropy             >= 0.2.1
                    , cprng-aes           >= 0.2
                    , cipher-aes          >= 0.1.7
+                   , crypto-random
     exposed-modules: Web.ClientSession
     ghc-options:     -Wall
     hs-source-dirs:  src
