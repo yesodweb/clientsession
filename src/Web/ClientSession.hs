@@ -45,6 +45,7 @@ module Web.ClientSession
     , randomIV
     , mkIV
     , getKey
+    , newKey
     , defaultKeyFile
     , getDefaultKey
     , initKey
@@ -188,12 +189,14 @@ getKey keyFile = do
     exists <- doesFileExist keyFile
     if exists
         then S.readFile keyFile >>= either (const newKey) return . initKey
-        else newKey
-  where
-    newKey = do
-        (bs, key') <- randomKey
-        S.writeFile keyFile bs
-        return key'
+        else newKey keyFile
+
+newKey :: FilePath     -- ^ File name where key is stored.
+       -> IO Key       -- ^ The actual key
+newKey keyFile = do
+    (bs, key') <- randomKey
+    S.writeFile keyFile bs
+    return key'
 
 -- | Generate a random 'Key'.  Besides the 'Key', the
 -- 'ByteString' passed to 'initKey' is returned so that it can be
