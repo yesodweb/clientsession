@@ -188,7 +188,7 @@ getKey :: FilePath     -- ^ File name where key is stored.
 getKey keyFile = do
     exists <- doesFileExist keyFile
     if exists
-        then S.readFile keyFile >>= either (const newKey) return . initKey
+        then S.readFile keyFile >>= either (const $ newKey keyFile) return . initKey
         else newKey keyFile
 
 newKey :: FilePath     -- ^ File name where key is stored.
