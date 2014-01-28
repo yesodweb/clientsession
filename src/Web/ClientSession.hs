@@ -191,7 +191,7 @@ getKey keyFile = do
         then S.readFile keyFile >>= either (const $ newKey keyFile) return . initKey
         else newKey keyFile
 
-newKey :: FilePath     -- ^ File name where key is stored.
+newKey :: FilePath     -- ^ File path where key will be saved.
        -> IO Key       -- ^ The actual key
 newKey keyFile = do
     (bs, key') <- randomKey
