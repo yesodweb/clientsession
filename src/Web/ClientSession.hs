@@ -209,10 +209,10 @@ randomKey = do
 -- there isn't exactly 96 bytes (256 bits for AES and 512 bits
 -- for Skein-MAC-512-512).
 --
--- Note that the input string is assumed be uniformly chosen from
--- the set of all 96-byte strings.  In order words, each byte
--- should be chosen from the set of all byte values (0-255) with
--- the same probability.
+-- Note that the input string is assumed to be uniformly chosen
+-- from the set of all 96-byte strings.  In other words, each
+-- byte should be chosen from the set of all byte values (0-255)
+-- with the same probability.
 --
 -- In particular, this function does not do any kind of key
 -- stretching.  You should never feed it a password, for example.
