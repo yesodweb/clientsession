@@ -21,7 +21,7 @@ flag test
   default: False
 
 library
-    build-depends:   base                >=4           && < 5
+    build-depends:   base                >= 4.7.0      && < 5
                    , bytestring          >= 0.9
                    , cereal              >= 0.3
                    , directory           >= 1
