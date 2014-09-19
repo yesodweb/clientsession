@@ -20,6 +20,13 @@ flag test
   description: Build the executable to run unit tests
   default: False
 
+executable clientsession-generate
+    main-is: generate.hs
+    build-depends:   base
+                   , clientsession
+    ghc-options:     -Wall
+    hs-source-dirs: bin
+
 library
     build-depends:   base                >= 4.7.0      && < 5
                    , bytestring          >= 0.9
