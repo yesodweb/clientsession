@@ -62,7 +62,17 @@ import Control.Applicative ((<$>))
 import Control.Concurrent (forkIO)
 import Control.Monad (guard, when)
 import Data.Function (on)
+
+#if MIN_VERSION_base(4,7,0)
 import System.Environment (lookupEnv, setEnv)
+#elif MIN_VERSION_base(4,6,0)
+import System.Environment (lookupEnv)
+import System.SetEnv (setEnv)
+#else
+import System.LookupEnv (lookupEnv)
+import System.SetEnv (setEnv)
+#endif
+
 import System.IO.Unsafe (unsafePerformIO)
 import qualified Data.IORef as I
 
