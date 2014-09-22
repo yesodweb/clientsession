@@ -45,10 +45,12 @@ module Web.ClientSession
     , randomIV
     , mkIV
     , getKey
+    , getKeyEnv
     , defaultKeyFile
     , getDefaultKey
     , initKey
     , randomKey
+    , randomKeyEnv
       -- * Actual encryption/decryption
     , encrypt
     , encryptIO
@@ -60,6 +62,17 @@ import Control.Applicative ((<$>))
 import Control.Concurrent (forkIO)
 import Control.Monad (guard, when)
 import Data.Function (on)
+
+#if MIN_VERSION_base(4,7,0)
+import System.Environment (lookupEnv, setEnv)
+#elif MIN_VERSION_base(4,6,0)
+import System.Environment (lookupEnv)
+import System.SetEnv (setEnv)
+#else
+import System.LookupEnv (lookupEnv)
+import System.SetEnv (setEnv)
+#endif
+
 import System.IO.Unsafe (unsafePerformIO)
 import qualified Data.IORef as I
 
@@ -68,6 +81,7 @@ import System.Directory (doesFileExist)
 
 -- from bytestring
 import qualified Data.ByteString as S
+import qualified Data.ByteString.Char8 as C
 import qualified Data.ByteString.Base64 as B
 
 -- from cereal
@@ -195,6 +209,22 @@ getKey keyFile = do
         S.writeFile keyFile bs
         return key'
 
+-- | Get the key from the named environment variable
+--
+-- Assumes the value is a Base64-encoded string. If the variable is not set, a
+-- random key will be generated, set in the environment, and the Base64-encoded
+-- version printed on @/dev/stdout@.
+getKeyEnv :: String     -- ^ Name of the environment variable
+          -> IO Key     -- ^ The actual key.
+getKeyEnv envVar = do
+    mvalue <- lookupEnv envVar
+    case mvalue of
+        Just value -> either (const newKey) return $ initKey =<< decode value
+        Nothing -> newKey
+  where
+    decode = B.decode . C.pack
+    newKey = randomKeyEnv envVar
+
 -- | Generate a random 'Key'.  Besides the 'Key', the
 -- 'ByteString' passed to 'initKey' is returned so that it can be
 -- saved for later use.
@@ -204,6 +234,17 @@ randomKey = do
     case initKey bs of
         Left e -> error $ "Web.ClientSession.randomKey: never here, " ++ e
         Right key -> return (bs, key)
+
+-- | Generate a random 'Key', set a Base64-encoded version of it in the given
+-- environment variable, then return it. Also prints the generated string to
+-- @/dev/stdout@.
+randomKeyEnv :: String -> IO Key
+randomKeyEnv envVar = do
+    (bs, key) <- randomKey
+    let encoded = C.unpack $ B.encode bs
+    setEnv envVar encoded
+    putStrLn $ envVar ++ "=" ++ encoded
+    return key
 
 -- | Initializes a 'Key' from a random 'S.ByteString'.  Fails if
 -- there isn't exactly 96 bytes (256 bits for AES and 512 bits

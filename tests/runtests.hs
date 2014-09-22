@@ -22,6 +22,7 @@ import Data.Serialize (encode, decode)
 main :: IO ()
 main = hspec $ describe "client session" $ do
     it "encrypt/decrypt success" $ property propEncDec
+    it "encrypt/decrypt success (environment key)" $ property propEncDecEnv
     it "encrypt/decrypt failure" $ property propEncDecFailure
     it "AES encrypt/decrypt success" $ property propAES
     it "AES encryption changes bs" $ property propAESChanges
@@ -32,6 +33,13 @@ main = hspec $ describe "client session" $ do
 propEncDec :: S.ByteString -> Bool
 propEncDec bs = unsafePerformIO $ do
     key <- getDefaultKey
+    s <- encryptIO key bs
+    let bs' = decrypt key s
+    return $ Just bs == bs'
+
+propEncDecEnv :: S.ByteString -> Bool
+propEncDecEnv bs = unsafePerformIO $ do
+    key <- getKeyEnv "SESSION_KEY"
     s <- encryptIO key bs
     let bs' = decrypt key s
     return $ Just bs == bs'
