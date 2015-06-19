@@ -58,10 +58,11 @@ module Web.ClientSession
     ) where
 
 -- from base
-import Control.Applicative ((<$>))
 import Control.Concurrent (forkIO)
 import Control.Monad (guard, when)
+import qualified Data.ByteArray as DBA
 import Data.Function (on)
+import Data.Maybe (fromJust)
 
 #if MIN_VERSION_base(4,7,0)
 import System.Environment (lookupEnv, setEnv)
@@ -87,31 +88,20 @@ import qualified Data.ByteString.Base64 as B
 -- from cereal
 import Data.Serialize (encode, Serialize (put, get), getBytes, putByteString)
 
--- from tagged
-import Data.Tagged (Tagged, untag)
-
 -- from crypto-api
 import Crypto.Classes (constTimeEq)
-import "crypto-api" Crypto.Random (genSeedLength, reseed)
-import Crypto.Types (ByteLength)
 
--- from cipher-aes
-import qualified Crypto.Cipher.AES as A
+-- from cryptonite
+import qualified Crypto.Cipher.AES   as A
+import qualified Crypto.Cipher.Types as CCT
+import qualified Crypto.Error        as CE
+import qualified "cryptonite" Crypto.Random       as CR
 
 -- from skein
 import Crypto.Skein (skeinMAC', Skein_512_256)
 
 -- from entropy
 import System.Entropy (getEntropy)
-
--- from cprng-aes
-#if MIN_VERSION_cprng_aes(0,5,0)
-import Crypto.Random.AESCtr (AESRNG, makeSystem)
-import "crypto-random" Crypto.Random (cprgGenerate)
-#else
-import Crypto.Random.AESCtr (AESRNG, makeSystem, genRandomBytes)
-#endif
-
 
 -- | The keys used to store the cookies.  We have an AES key used
 -- to encrypt the cookie and a Skein-MAC-512-256 key used verify
@@ -120,18 +110,15 @@ import Crypto.Random.AESCtr (AESRNG, makeSystem, genRandomBytes)
 -- have 64 bytes (512 bits).
 --
 -- See also 'getDefaultKey' and 'initKey'.
-data Key = Key { aesKey ::
-#if MIN_VERSION_cipher_aes(0, 2, 0)
-                    !A.AES
-#else
-                    !A.Key
-#endif
-                 -- ^ AES key with 32 bytes.
+data Key = Key { aesKey :: A.AES256
+                 -- ^ Initialized AES cipher
                , macKey :: !(S.ByteString -> Skein_512_256)
                  -- ^ Skein-MAC key.  Instead of storing the key
                  -- data, we store a partially applied function
                  -- for calculating the MAC (see 'skeinMAC'').
                , keyRaw :: !S.ByteString
+                 -- ^ Raw key which is split to generate the above two
+                 -- operations.  See 'initKey'.
                }
 
 instance Eq Key where
@@ -147,30 +134,27 @@ instance Show Key where
 
 -- | The initialization vector used by AES.  Must be exactly 16
 -- bytes long.
-newtype IV = IV S.ByteString
+newtype IV = IV { unIV :: CCT.IV A.AES256 }
+ deriving (Eq)
 
 unsafeMkIV :: S.ByteString -> IV
-unsafeMkIV bs = (IV bs)
+unsafeMkIV bs = IV $ fromJust $ CCT.makeIV bs
 
-unIV :: IV -> S.ByteString
-unIV (IV bs) = bs
-
-instance Eq IV where
-  (==) = (==) `on` unIV
-  (/=) = (/=) `on` unIV
+rawIV :: IV -> S.ByteString
+rawIV (IV bs) = DBA.copyAndFreeze bs (\_ -> return ())
 
 instance Ord IV where
-  compare = compare `on` unIV
-  (<=) = (<=) `on` unIV
-  (<)  = (<)  `on` unIV
-  (>=) = (>=) `on` unIV
-  (>)  = (>)  `on` unIV
+  compare = compare `on` rawIV
+  (<=) = (<=) `on` rawIV
+  (<)  = (<)  `on` rawIV
+  (>=) = (>=) `on` rawIV
+  (>)  = (>)  `on` rawIV
 
 instance Show IV where
-  show = show . unIV
+  show = show . rawIV
 
 instance Serialize IV where
-  put = put . unIV
+  put = put . rawIV
   get = unsafeMkIV <$> get
 
 -- | Construct an initialization vector from a 'S.ByteString'.
@@ -182,7 +166,7 @@ mkIV bs | S.length bs == 16 = Just (unsafeMkIV bs)
 -- | Randomly construct a fresh initialization vector.  You
 -- /MUST NOT/ reuse initialization vectors.
 randomIV :: IO IV
-randomIV = aesRNG
+randomIV = drgRNG
 
 -- | The default key file.
 defaultKeyFile :: FilePath
@@ -264,10 +248,14 @@ randomKeyEnv envVar = do
 initKey :: S.ByteString -> Either String Key
 initKey bs | S.length bs /= 96 = Left $ "Web.ClientSession.initKey: length of " ++
                                          show (S.length bs) ++ " /= 96."
-initKey bs = Right $ Key { aesKey = A.initKey preAesKey
-                         , macKey = skeinMAC' preMacKey
-                         , keyRaw = bs
-                         }
+initKey bs = case CCT.cipherInit preAesKey of
+               CE.CryptoFailed err -> Left $ 
+                 "Web.ClientSession.initKey: cipher initialization failed: "
+                 ++ (show err)
+               CE.CryptoPassed c -> Right $ Key { aesKey = c
+                                                , macKey = skeinMAC' preMacKey
+                                                , keyRaw = bs
+                                                }
     where
       (preMacKey, preAesKey) = S.splitAt 64 bs
 
@@ -286,14 +274,10 @@ encrypt :: Key          -- ^ Key of the server.
         -> S.ByteString -- ^ Serialized cookie data.
         -> S.ByteString -- ^ Encoded cookie data to be given to
                         -- the client browser.
-encrypt key (IV iv) x = B.encode final
+encrypt key iv x = B.encode final
   where
-#if MIN_VERSION_cipher_aes(0, 2, 0)
-    encrypted  = A.encryptCTR (aesKey key) iv x
-#else
-    encrypted  = A.encryptCTR (aesKey key) (A.IV iv) x
-#endif
-    toBeAuthed = iv `S.append` encrypted
+    encrypted  = CCT.ctrCombine (aesKey key) (unIV iv) x
+    toBeAuthed = (rawIV iv) `S.append` encrypted
     auth       = macKey key toBeAuthed
     final      = encode auth `S.append` toBeAuthed
 
@@ -311,12 +295,7 @@ decrypt key dataBS64 = do
         auth' = macKey key toBeAuthed
     guard (encode auth' `constTimeEq` auth)
     let (iv, encrypted) = S.splitAt 16 toBeAuthed
-#if MIN_VERSION_cipher_aes(0, 2, 0)
-    let iv' = iv
-#else
-    let iv' = A.IV iv
-#endif
-    return $! A.decryptCTR (aesKey key) iv' encrypted
+    return $! CCT.ctrCombine (aesKey key) (unIV $ unsafeMkIV $ iv) encrypted
 
 
 -- Significantly more efficient random IV generation. Initial
@@ -324,45 +303,39 @@ decrypt key dataBS64 = do
 -- Crypto.Modes.getIVIO, since it does not require /dev/urandom
 -- I/O for every call.
 
-data AESState =
-    ASt {-# UNPACK #-} !AESRNG -- Our CPRNG using AES on CTR mode
-        {-# UNPACK #-} !Int    -- How many IVs were generated with this
-                               -- AESRNG.  Used to control reseeding.
+data DRGState =
+    DSt {-# UNPACK #-} !CR.ChaChaDRG -- Our CPRNG using ChaCha
+        {-# UNPACK #-} !Int       -- How many IVs were generated with this
+                                  -- DRG.  Used to control reseeding.
 
 -- | Construct initial state of the CPRNG.
-aesSeed :: IO AESState
-aesSeed = do
-  rng <- makeSystem
-  return $! ASt rng 0
+drgSeed :: IO DRGState
+drgSeed = do
+  rng <- CR.drgNew
+  return $! DSt rng 0
 
 -- | Reseed the CPRNG with new entropy from the system pool.
-aesReseed :: IO ()
-aesReseed = do
-  rng' <- makeSystem
-  I.writeIORef aesRef $ ASt rng' 0
+drgReseed :: IO ()
+drgReseed = do
+  rng' <- CR.drgNew
+  I.writeIORef drgRef $ DSt rng' 0
 
 -- | 'IORef' that keeps the current state of the CPRNG.  Yep,
 -- global state.  Used in thread-safe was only, though.
-aesRef :: I.IORef AESState
-aesRef = unsafePerformIO $ aesSeed >>= I.newIORef
-{-# NOINLINE aesRef #-}
+drgRef :: I.IORef DRGState
+drgRef = unsafePerformIO $ drgSeed >>= I.newIORef
+{-# NOINLINE drgRef #-}
 
 -- | Construct a new 16-byte IV using our CPRNG.  Forks another
 -- thread to reseed the CPRNG should its usage count reach a
 -- hardcoded threshold.
-aesRNG :: IO IV
-aesRNG = do
+drgRNG :: IO IV
+drgRNG = do
   (bs, count) <-
-      I.atomicModifyIORef aesRef $ \(ASt rng count) ->
-#if MIN_VERSION_cprng_aes(0, 5, 0)
-          let (bs', rng') = cprgGenerate 16 rng
-#elif MIN_VERSION_cprng_aes(0, 3, 2)
-          let (bs', rng') = genRandomBytes 16 rng
-#else
-          let (bs', rng') = genRandomBytes rng 16
-#endif
-          in (ASt rng' (succ count), (bs', count))
-  when (count == threshold) $ void $ forkIO aesReseed
+      I.atomicModifyIORef drgRef $ \(DSt rng count) ->
+          let (bs', rng') = CR.randomBytesGenerate 16 rng
+          in (DSt rng' (succ count), (bs', count))
+  when (count == threshold) $ void $ forkIO drgReseed
   return $! unsafeMkIV bs
  where
   void f = f >> return ()
