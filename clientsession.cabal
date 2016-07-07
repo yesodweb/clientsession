@@ -1,5 +1,5 @@
 name:            clientsession
-version:         0.9.1.1
+version:         0.9.1.2
 license:         MIT
 license-file:    LICENSE
 author:          Michael Snoyman <michael@snoyman.com>, Felipe Lessa <felipe.lessa@gmail.com>
