@@ -1,6 +1,6 @@
 name:            clientsession
-version:         0.9.1
-license:         BSD3
+version:         0.9.1.1
+license:         MIT
 license-file:    LICENSE
 author:          Michael Snoyman <michael@snoyman.com>, Felipe Lessa <felipe.lessa@gmail.com>
 maintainer:      Michael Snoyman <michael@snoyman.com>
@@ -13,7 +13,7 @@ stability:       stable
 cabal-version:   >= 1.8
 build-type:      Simple
 homepage:        http://github.com/yesodweb/clientsession/tree/master
-extra-source-files: tests/runtests.hs bench.hs
+extra-source-files: tests/runtests.hs bench.hs ChangeLog.md README.md
 
 flag test
   description: Build the executable to run unit tests
