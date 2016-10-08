@@ -82,7 +82,7 @@ import System.Directory (doesFileExist)
 -- from bytestring
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as C
-import qualified Data.ByteString.Base64 as B
+import qualified Data.ByteString.Base64.URL as B
 
 -- from cereal
 import Data.Serialize (encode, Serialize (put, get), getBytes, putByteString)
