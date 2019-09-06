@@ -46,6 +46,8 @@ module Web.ClientSession
     , mkIV
     , getKey
     , getKeyEnv
+    , keyFromFile
+    , keyFromEnv
     , defaultKeyFile
     , getDefaultKey
     , initKey
@@ -199,15 +201,27 @@ getDefaultKey = getKey defaultKeyFile
 getKey :: FilePath     -- ^ File name where key is stored.
        -> IO Key       -- ^ The actual key.
 getKey keyFile = do
-    exists <- doesFileExist keyFile
-    if exists
-        then S.readFile keyFile >>= either (const newKey) return . initKey
-        else newKey
+    mvalue <- keyFromFile keyFile
+    case mvalue of
+        Right key -> return key
+        Left _ -> newKey
   where
     newKey = do
         (bs, key') <- randomKey
         S.writeFile keyFile bs
         return key'
+
+-- | Get a key from the given text file.
+--
+-- If the file does not exist or it is corrupted, Left will be returned with a
+-- suitable error message.
+keyFromFile :: FilePath               -- ^ File name where key is stored.
+            -> IO (Either String Key) -- ^ The actual key.
+keyFromFile keyFile = do
+    exists <- doesFileExist keyFile
+    if exists
+        then initKey <$> S.readFile keyFile
+        else return $ Left $ "Web.ClientSession.keyFromFile file not found:" ++ keyFile
 
 -- | Get the key from the named environment variable
 --
@@ -217,13 +231,29 @@ getKey keyFile = do
 getKeyEnv :: String     -- ^ Name of the environment variable
           -> IO Key     -- ^ The actual key.
 getKeyEnv envVar = do
-    mvalue <- lookupEnv envVar
+    mvalue <- keyFromEnv envVar
     case mvalue of
-        Just value -> either (const newKey) return $ initKey =<< decode value
-        Nothing -> newKey
+        Right key -> return key
+        Left _ -> newKey
+  where
+    newKey = randomKeyEnv envVar
+
+
+-- | Get the key from the named environment variable
+--
+-- Assumes the value is a Base64-encoded string. If the variable is not set, or
+-- if it is corrupted, Left will be returned with a suitable error message.
+keyFromEnv :: String     -- ^ Name of the environment variable
+           -> IO (Either String Key) -- ^ The actual key.
+keyFromEnv envVar = do
+    mvalue <- lookupEnv envVar
+    return $ do
+      value <- maybe (Left $ "Web.ClientSession.keyFromEnv env var not found:" ++ envVar) Right mvalue
+      dvalue <- decode value
+      initKey dvalue
   where
     decode = B.decode . C.pack
-    newKey = randomKeyEnv envVar
+
 
 -- | Generate a random 'Key'.  Besides the 'Key', the
 -- 'ByteString' passed to 'initKey' is returned so that it can be
