@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE PackageImports #-}
@@ -61,6 +62,7 @@ module Web.ClientSession
 import Control.Applicative ((<$>))
 import Control.Concurrent (forkIO)
 import Control.Monad (guard, when)
+import Data.Bifunctor (first)
 import Data.Function (on)
 
 #if MIN_VERSION_base(4,7,0)
@@ -92,25 +94,18 @@ import Data.Tagged (Tagged, untag)
 
 -- from crypto-api
 import Crypto.Classes (constTimeEq)
-import "crypto-api" Crypto.Random (genSeedLength, reseed)
-import Crypto.Types (ByteLength)
 
--- from cipher-aes
+-- from cryptonite
 import qualified Crypto.Cipher.AES as A
+import Crypto.Cipher.Types(Cipher(..),BlockCipher(..),makeIV)
+import Crypto.Error (eitherCryptoError)
+import "cryptonite" Crypto.Random (ChaChaDRG,drgNew,randomBytesGenerate)
 
 -- from skein
 import Crypto.Skein (skeinMAC', Skein_512_256)
 
 -- from entropy
 import System.Entropy (getEntropy)
-
--- from cprng-aes
-#if MIN_VERSION_cprng_aes(0,5,0)
-import Crypto.Random.AESCtr (AESRNG, makeSystem)
-import "crypto-random" Crypto.Random (cprgGenerate)
-#else
-import Crypto.Random.AESCtr (AESRNG, makeSystem, genRandomBytes)
-#endif
 
 
 -- | The keys used to store the cookies.  We have an AES key used
@@ -121,11 +116,7 @@ import Crypto.Random.AESCtr (AESRNG, makeSystem, genRandomBytes)
 --
 -- See also 'getDefaultKey' and 'initKey'.
 data Key = Key { aesKey ::
-#if MIN_VERSION_cipher_aes(0, 2, 0)
-                    !A.AES
-#else
-                    !A.Key
-#endif
+                    !A.AES256
                  -- ^ AES key with 32 bytes.
                , macKey :: !(S.ByteString -> Skein_512_256)
                  -- ^ Skein-MAC key.  Instead of storing the key
@@ -182,7 +173,7 @@ mkIV bs | S.length bs == 16 = Just (unsafeMkIV bs)
 -- | Randomly construct a fresh initialization vector.  You
 -- /MUST NOT/ reuse initialization vectors.
 randomIV :: IO IV
-randomIV = aesRNG
+randomIV = chaChaRNG
 
 -- | The default key file.
 defaultKeyFile :: FilePath
@@ -264,12 +255,13 @@ randomKeyEnv envVar = do
 initKey :: S.ByteString -> Either String Key
 initKey bs | S.length bs /= 96 = Left $ "Web.ClientSession.initKey: length of " ++
                                          show (S.length bs) ++ " /= 96."
-initKey bs = Right $ Key { aesKey = A.initKey preAesKey
-                         , macKey = skeinMAC' preMacKey
-                         , keyRaw = bs
-                         }
-    where
-      (preMacKey, preAesKey) = S.splitAt 64 bs
+initKey bs = do
+  let (preMacKey, preAesKey) = S.splitAt 64 bs
+  aesKey <- first show $ eitherCryptoError (cipherInit preAesKey)
+  Right $ Key { aesKey
+              , macKey = skeinMAC' preMacKey
+              , keyRaw = bs
+              }
 
 -- | Same as 'encrypt', however randomly generates the
 -- initialization vector for you.
@@ -286,16 +278,14 @@ encrypt :: Key          -- ^ Key of the server.
         -> S.ByteString -- ^ Serialized cookie data.
         -> S.ByteString -- ^ Encoded cookie data to be given to
                         -- the client browser.
-encrypt key (IV iv) x = B.encode final
-  where
-#if MIN_VERSION_cipher_aes(0, 2, 0)
-    encrypted  = A.encryptCTR (aesKey key) iv x
-#else
-    encrypted  = A.encryptCTR (aesKey key) (A.IV iv) x
-#endif
-    toBeAuthed = iv `S.append` encrypted
-    auth       = macKey key toBeAuthed
-    final      = encode auth `S.append` toBeAuthed
+encrypt key (IV b) x = case makeIV b of
+    Nothing -> error "Web.ClientSession.encrypt: Failed to makeIV"
+    Just iv -> B.encode final
+      where
+        encrypted  = ctrCombine (aesKey key) iv x
+        toBeAuthed = b `S.append` encrypted
+        auth       = macKey key toBeAuthed
+        final      = encode auth `S.append` toBeAuthed
 
 -- | Decode (Base64), verify the integrity and authenticity
 -- (Skein-MAC-512-256) and decrypt (AES-CTR) the given encoded
@@ -311,58 +301,53 @@ decrypt key dataBS64 = do
         auth' = macKey key toBeAuthed
     guard (encode auth' `constTimeEq` auth)
     let (iv, encrypted) = S.splitAt 16 toBeAuthed
-#if MIN_VERSION_cipher_aes(0, 2, 0)
-    let iv' = iv
-#else
-    let iv' = A.IV iv
-#endif
-    return $! A.decryptCTR (aesKey key) iv' encrypted
+    iv' <- makeIV iv
+    return $! ctrCombine (aesKey key) iv' encrypted
 
 
+-- [from when the code used cprng-aes.AESRNG]
 -- Significantly more efficient random IV generation. Initial
 -- benchmarks placed it at 6.06 us versus 1.69 ms for
 -- Crypto.Modes.getIVIO, since it does not require /dev/urandom
 -- I/O for every call.
 
-data AESState =
-    ASt {-# UNPACK #-} !AESRNG -- Our CPRNG using AES on CTR mode
-        {-# UNPACK #-} !Int    -- How many IVs were generated with this
-                               -- AESRNG.  Used to control reseeding.
+-- [now with cryptonite.ChaChaDRG]
+-- I haven't run any benchmark; this conversion is a case of “code
+-- that doesn't crash trumps performance.”
+
+data ChaChaState =
+    CCSt {-# UNPACK #-} !ChaChaDRG -- Our CPRNG using ChaCha
+         {-# UNPACK #-} !Int       -- How many IVs were generated with this
+                                   -- CPRNG.  Used to control reseeding.
 
 -- | Construct initial state of the CPRNG.
-aesSeed :: IO AESState
-aesSeed = do
-  rng <- makeSystem
-  return $! ASt rng 0
+chaChaSeed :: IO ChaChaState
+chaChaSeed = do
+  drg <- drgNew
+  return $! CCSt drg 0
 
 -- | Reseed the CPRNG with new entropy from the system pool.
-aesReseed :: IO ()
-aesReseed = do
-  rng' <- makeSystem
-  I.writeIORef aesRef $ ASt rng' 0
+chaChaReseed :: IO ()
+chaChaReseed = do
+  drg' <- drgNew
+  I.writeIORef chaChaRef $ CCSt drg' 0
 
 -- | 'IORef' that keeps the current state of the CPRNG.  Yep,
 -- global state.  Used in thread-safe was only, though.
-aesRef :: I.IORef AESState
-aesRef = unsafePerformIO $ aesSeed >>= I.newIORef
-{-# NOINLINE aesRef #-}
+chaChaRef :: I.IORef ChaChaState
+chaChaRef = unsafePerformIO $ chaChaSeed >>= I.newIORef
+{-# NOINLINE chaChaRef #-}
 
 -- | Construct a new 16-byte IV using our CPRNG.  Forks another
 -- thread to reseed the CPRNG should its usage count reach a
 -- hardcoded threshold.
-aesRNG :: IO IV
-aesRNG = do
+chaChaRNG :: IO IV
+chaChaRNG = do
   (bs, count) <-
-      I.atomicModifyIORef aesRef $ \(ASt rng count) ->
-#if MIN_VERSION_cprng_aes(0, 5, 0)
-          let (bs', rng') = cprgGenerate 16 rng
-#elif MIN_VERSION_cprng_aes(0, 3, 2)
-          let (bs', rng') = genRandomBytes 16 rng
-#else
-          let (bs', rng') = genRandomBytes rng 16
-#endif
-          in (ASt rng' (succ count), (bs', count))
-  when (count == threshold) $ void $ forkIO aesReseed
+      I.atomicModifyIORef chaChaRef $ \(CCSt drg count) ->
+          let (bs', drg') = randomBytesGenerate 16 drg
+          in (CCSt drg' (succ count), (bs', count))
+  when (count == threshold) $ void $ forkIO chaChaReseed
   return $! unsafeMkIV bs
  where
   void f = f >> return ()

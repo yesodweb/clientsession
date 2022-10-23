@@ -36,9 +36,7 @@ library
                    , skein               == 1.0.*
                    , base64-bytestring   >= 0.1.1.1
                    , entropy             >= 0.2.1
-                   , cprng-aes           >= 0.2
-                   , cipher-aes          >= 0.1.7
-                   , crypto-random
+                   , cryptonite          >= 0.15
                    , setenv
     exposed-modules: Web.ClientSession
     other-modules:   System.LookupEnv
