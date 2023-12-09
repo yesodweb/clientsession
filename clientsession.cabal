@@ -29,7 +29,9 @@ executable clientsession-generate
 
 library
     default-language: Haskell2010
-    build-depends:   base                >=4           && < 5
+    build-depends:   base                >= 4.8          && < 5
+                       -- https://github.com/yesodweb/clientsession/commit/1221230770feff60f77ff676d52fc464cb77b2d9#r122087962
+                       -- Data.Bifunctor entered base in 4.8
                    , bytestring          >= 0.9
                    , cereal              >= 0.3
                    , directory           >= 1
@@ -64,4 +66,4 @@ test-suite runtests
 
 source-repository head
   type:     git
-  location: git://github.com/yesodweb/clientsession.git
+  location: https://github.com/yesodweb/clientsession.git
