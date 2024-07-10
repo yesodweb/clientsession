@@ -40,7 +40,7 @@ library
                    , skein               == 1.0.*
                    , base64-bytestring   >= 0.1.1.1
                    , entropy             >= 0.2.1
-                   , cryptonite          >= 0.15
+                   , crypton             >= 1.0
                    , setenv
     exposed-modules: Web.ClientSession
     other-modules:   System.LookupEnv

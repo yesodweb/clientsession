@@ -95,11 +95,11 @@ import Data.Tagged (Tagged, untag)
 -- from crypto-api
 import Crypto.Classes (constTimeEq)
 
--- from cryptonite
+-- from crypton
 import qualified Crypto.Cipher.AES as A
 import Crypto.Cipher.Types(Cipher(..),BlockCipher(..),makeIV)
 import Crypto.Error (eitherCryptoError)
-import "cryptonite" Crypto.Random (ChaChaDRG,drgNew,randomBytesGenerate)
+import "crypton" Crypto.Random (ChaChaDRG,drgNew,randomBytesGenerate)
 
 -- from skein
 import Crypto.Skein (skeinMAC', Skein_512_256)
@@ -311,7 +311,7 @@ decrypt key dataBS64 = do
 -- Crypto.Modes.getIVIO, since it does not require /dev/urandom
 -- I/O for every call.
 
--- [now with cryptonite.ChaChaDRG]
+-- [now with crypton.ChaChaDRG]
 -- I haven't run any benchmark; this conversion is a case of “code
 -- that doesn't crash trumps performance.”
 
